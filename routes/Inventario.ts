@@ -3,6 +3,22 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
+// Función auxiliar para guardar en la pestaña Historial
+const guardarHistorial = async (tipo: string, codigo: string, cantidad: string) => {
+  try {
+    const sheetHistorial = await getSheet('Historial');
+    const fecha = new Date().toLocaleString(); // Fecha y hora actual
+    await sheetHistorial.addRow({
+      Fecha: fecha,
+      Tipo: tipo,
+      Codigo: codigo,
+      Cantidad: cantidad
+    });
+  } catch (error) {
+    console.error('Error al guardar en historial:', error);
+  }
+};
+
 // 1. CONSULTAR TODO EL INVENTARIO
 router.get('/', async (req, res) => {
   try {
@@ -19,34 +35,11 @@ router.get('/', async (req, res) => {
     }));
     res.json(data);
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: 'Error al leer el inventario' });
   }
 });
 
-// 2. CONSULTAR UN PRODUCTO POR CÓDIGO
-router.get('/:codigo', async (req, res) => {
-  try {
-    const sheet = await getSheet('Inventario');
-    const rows = await sheet.getRows();
-    const producto = rows.find((row: any) => row.get('CODIGO') === req.params.codigo);
-    
-    if (producto) {
-      res.json({
-        Codigo: producto.get('CODIGO'),
-        Nombre: producto.get('NOMBRE'),
-        Venta: producto.get('VENTA'),
-        Existencia: producto.get('EXISTENCIA')
-      });
-    } else {
-      res.status(404).json({ error: 'Producto no encontrado' });
-    }
-  } catch (error) {
-    res.status(500).json({ error: 'Error al consultar' });
-  }
-});
-
-// 3. CARGAR MERCANCÍA (Suma stock o crea uno nuevo)
+// 2. CARGAR MERCANCÍA
 router.post('/cargar', async (req, res) => {
   try {
     const { codigo, categoria, nombre, marca, costo, venta, cantidad } = req.body;
@@ -59,26 +52,21 @@ router.post('/cargar', async (req, res) => {
       const nuevaExistencia = parseInt(producto.get('EXISTENCIA') || '0') + parseInt(cantidad);
       producto.set('EXISTENCIA', nuevaExistencia.toString());
       await producto.save();
+      await guardarHistorial('Carga', codigo, cantidad);
       res.json({ message: 'Stock actualizado correctamente', nuevaExistencia });
     } else {
       await sheet.addRow({
-        CODIGO: codigo,
-        CATEGORIA: categoria,
-        NOMBRE: nombre,
-        MARCA: marca,
-        COSTO: costo,
-        VENTA: venta,
-        EXISTENCIA: cantidad
+        CODIGO: codigo, CATEGORIA: categoria, NOMBRE: nombre, MARCA: marca, COSTO: costo, VENTA: venta, EXISTENCIA: cantidad
       });
+      await guardarHistorial('Carga', codigo, cantidad);
       res.json({ message: 'Producto nuevo cargado correctamente' });
     }
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: 'Error al cargar mercancía' });
   }
 });
 
-// 4. VENDER (Resta stock)
+// 3. VENDER
 router.post('/vender', async (req, res) => {
   try {
     const { codigo, cantidad } = req.body;
@@ -98,10 +86,9 @@ router.post('/vender', async (req, res) => {
 
     producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
     await producto.save();
-    
+    await guardarHistorial('Venta', codigo, cantidad);
     res.json({ message: 'Venta realizada', stockRestante: existenciaActual - cantidadVender });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: 'Error al procesar la venta' });
   }
 });
