@@ -14,7 +14,9 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 app.use(helmet());
-app.use(cors({ origin: '*'}));
+app.use(cors({
+  origin: '*' // Permite cualquier origen (para pruebas)
+}));
 app.use(morgan('dev'));
 app.use(compression());
 app.use(rateLimit({
