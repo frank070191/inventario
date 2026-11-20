@@ -3,105 +3,106 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// Create
-router.post('/', async (req, res) => {
-  try {
-    const sheet = await getSheet('Inventario');
-    const newRow = await sheet.addRow(req.body);
-    res.status(201).json({ message: 'Created successfully', data: req.body, id: newRow.rowIndex });
-  } catch (error) {
-    console.error('Error creating Inventario:', error);
-    res.status(500).json({ error: 'Failed to create Inventario' });
-  }
-});
-
-// Read all
+// 1. CONSULTAR TODO EL INVENTARIO
 router.get('/', async (req, res) => {
   try {
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
-    const data = rows.map ((row: any) => {
-      const item: any = {};
-      item['CODIGO'] = row.get('CODIGO');
-      item['CATEGORIA'] = row.get('CATEGORIA');
-      item['NOMBRE'] = row.get('NOMBRE');
-      item['MARCA'] = row.get('MARCA');
-      item['COSTO'] = row.get('COSTO');
-      item['VENTA'] = row.get('VENTA');
-      item['EXISTENCIA'] = row.get('EXISTENCIA');
-      return item;
-    });
+    const data = rows.map((row: any) => ({
+      Codigo: row.get('CODIGO'),
+      Categoria: row.get('CATEGORIA'),
+      Nombre: row.get('NOMBRE'),
+      Marca: row.get('MARCA'),
+      Costo: row.get('COSTO'),
+      Venta: row.get('VENTA'),
+      Existencia: row.get('EXISTENCIA')
+    }));
     res.json(data);
   } catch (error) {
-    console.error('Error fetching Inventario:', error);
-    res.status(500).json({ error: 'Failed to fetch Inventario' });
+    console.error(error);
+    res.status(500).json({ error: 'Error al leer el inventario' });
   }
 });
 
-// Read one
-router.get('/:id', async (req, res) => {
+// 2. CONSULTAR UN PRODUCTO POR CÓDIGO
+router.get('/:codigo', async (req, res) => {
   try {
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
-    const rowIndex = parseInt(req.params.id);
-    if (rowIndex < 0 || rowIndex >= rows.length) {
-      return res.status(404).json({ error: 'Inventario not found' });
+    const producto = rows.find((row: any) => row.get('CODIGO') === req.params.codigo);
+    
+    if (producto) {
+      res.json({
+        Codigo: producto.get('CODIGO'),
+        Nombre: producto.get('NOMBRE'),
+        Venta: producto.get('VENTA'),
+        Existencia: producto.get('EXISTENCIA')
+      });
+    } else {
+      res.status(404).json({ error: 'Producto no encontrado' });
     }
-    const row = rows[rowIndex];
-    const item: any = {};
-    item['CODIGO'] = row.get('CODIGO');
-    item['CATEGORIA'] = row.get('CATEGORIA');
-    item['NOMBRE'] = row.get('NOMBRE');
-    item['MARCA'] = row.get('MARCA');
-    item['COSTO'] = row.get('COSTO');
-    item['VENTA'] = row.get('VENTA');
-    item['EXISTENCIA'] = row.get('EXISTENCIA');
-    res.json(item);
   } catch (error) {
-    console.error('Error fetching Inventario:', error);
-    res.status(500).json({ error: 'Failed to fetch Inventario' });
+    res.status(500).json({ error: 'Error al consultar' });
   }
 });
 
-// Update
-router.put('/:id', async (req, res) => {
+// 3. CARGAR MERCANCÍA (Suma stock o crea uno nuevo)
+router.post('/cargar', async (req, res) => {
   try {
+    const { codigo, categoria, nombre, marca, costo, venta, cantidad } = req.body;
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
-    const rowIndex = parseInt(req.params.id);
-    if (rowIndex < 0 || rowIndex >= rows.length) {
-      return res.status(404).json({ error: 'Inventario not found' });
+    
+    const producto = rows.find((row: any) => row.get('CODIGO') === codigo);
+
+    if (producto) {
+      const nuevaExistencia = parseInt(producto.get('EXISTENCIA') || '0') + parseInt(cantidad);
+      producto.set('EXISTENCIA', nuevaExistencia.toString());
+      await producto.save();
+      res.json({ message: 'Stock actualizado correctamente', nuevaExistencia });
+    } else {
+      await sheet.addRow({
+        CODIGO: codigo,
+        CATEGORIA: categoria,
+        NOMBRE: nombre,
+        MARCA: marca,
+        COSTO: costo,
+        VENTA: venta,
+        EXISTENCIA: cantidad
+      });
+      res.json({ message: 'Producto nuevo cargado correctamente' });
     }
-    const row = rows[rowIndex];
-    row.set('CODIGO', req.body['CODIGO']);
-    row.set('CATEGORIA', req.body['CATEGORIA']);
-    row.set('NOMBRE', req.body['NOMBRE']);
-    row.set('MARCA', req.body['MARCA']);
-    row.set('COSTO', req.body['COSTO']);
-    row.set('VENTA', req.body['VENTA']);
-    row.set('EXISTENCIA', req.body['EXISTENCIA']);
-    await row.save();
-    res.json({ message: 'Updated successfully', data: req.body });
   } catch (error) {
-    console.error('Error updating Inventario:', error);
-    res.status(500).json({ error: 'Failed to update Inventario' });
+    console.error(error);
+    res.status(500).json({ error: 'Error al cargar mercancía' });
   }
 });
 
-// Delete
-router.delete('/:id', async (req, res) => {
+// 4. VENDER (Resta stock)
+router.post('/vender', async (req, res) => {
   try {
+    const { codigo, cantidad } = req.body;
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
-    const rowIndex = parseInt(req.params.id);
-    if (rowIndex < 0 || rowIndex >= rows.length) {
-      return res.status(404).json({ error: 'Inventario not found' });
+    
+    const producto = rows.find((row: any) => row.get('CODIGO') === codigo);
+
+    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
+
+    const existenciaActual = parseInt(producto.get('EXISTENCIA') || '0');
+    const cantidadVender = parseInt(cantidad);
+
+    if (existenciaActual < cantidadVender) {
+      return res.status(400).json({ error: 'No hay suficiente stock' });
     }
-    await rows[rowIndex].delete();
-    res.json({ message: 'Deleted successfully' });
+
+    producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
+    await producto.save();
+    
+    res.json({ message: 'Venta realizada', stockRestante: existenciaActual - cantidadVender });
   } catch (error) {
-    console.error('Error deleting Inventario:', error);
-    res.status(500).json({ error: 'Failed to delete Inventario' });
+    console.error(error);
+    res.status(500).json({ error: 'Error al procesar la venta' });
   }
 });
 
