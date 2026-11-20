@@ -14,8 +14,9 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string) 
       Codigo: codigo,
       Cantidad: cantidad
     });
-  } catch (error) {
+  } catch (error: any) {
     console.error('Error al guardar en historial:', error);
+    throw new Error(error.message || 'Fallo al guardar historial'); // <-- Agrega esta línea
   }
 };
 
