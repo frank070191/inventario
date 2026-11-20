@@ -22,8 +22,32 @@ function App() {
     }
   };
 
-  // Cargar datos automáticamente al abrir la página
   useEffect(() => { consultar(); }, []);
+
+  // ✨ MAGIA: Autocompletar al escribir el código en Carga
+  const handleCodigoChange = (e) => {
+    const codigoIngresado = e.target.value;
+    // Buscamos si el producto ya existe en la lista
+    const productoExistente = productos.find(p => p.Codigo === codigoIngresado);
+
+    if (productoExistente) {
+      // Si existe, llenamos los campos
+      setCarga({
+        ...carga,
+        codigo: codigoIngresado,
+        categoria: productoExistente.Categoria || '',
+        nombre: productoExistente.Nombre || '',
+        marca: productoExistente.Marca || '',
+        costo: productoExistente.Costo || '',
+        venta: productoExistente.Venta || '',
+        // La cantidad la dejamos en blanco para que escribas cuánto vas a SUMAR
+        cantidad: '' 
+      });
+    } else {
+      // Si no existe, solo actualizamos el código y limpiamos los demás
+      setCarga({ codigo: codigoIngresado, categoria: '', nombre: '', marca: '', costo: '', venta: '', cantidad: '' });
+    }
+  };
 
   const cargarProducto = async (e) => {
     e.preventDefault();
@@ -34,7 +58,7 @@ function App() {
       const data = await res.json();
       setMensaje(data.message || data.error);
       setCarga({ codigo: '', categoria: '', nombre: '', marca: '', costo: '', venta: '', cantidad: '' });
-      consultar(); // Refrescar tabla
+      consultar(); 
     } catch (error) { setMensaje('Error al cargar.'); }
   };
 
@@ -47,11 +71,10 @@ function App() {
       const data = await res.json();
       setMensaje(data.message || data.error);
       setVenta({ codigo: '', cantidad: '' });
-      consultar(); // Refrescar tabla
+      consultar(); 
     } catch (error) { setMensaje('Error al vender.'); }
   };
 
-  // Filtro de búsqueda inteligente
   const productosFiltrados = productos.filter(p => 
     p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase())
   );
@@ -72,10 +95,7 @@ function App() {
         <div>
           <h2>Inventario Actual</h2>
           <input 
-            type="text" 
-            placeholder="Buscar por nombre (ej. toyo)..." 
-            value={busqueda} 
-            onChange={e => setBusqueda(e.target.value)} 
+            type="text" placeholder="Buscar por nombre..." value={busqueda} onChange={e => setBusqueda(e.target.value)} 
             style={{ width: '100%', padding: '10px', marginBottom: '10px', boxSizing: 'border-box' }}
           />
           <table border="1" style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
@@ -94,14 +114,17 @@ function App() {
       {vista === 'cargar' && (
         <form onSubmit={cargarProducto} style={{ display: 'flex', flexDirection: 'column', gap: '10px', maxWidth: '400px', margin: '0 auto' }}>
           <h2>Ingresar Mercancía</h2>
-          <input placeholder="Código" value={carga.codigo} onChange={e => setCarga({...carga, codigo: e.target.value})} required style={{padding: '8px'}}/>
+          {/* Aquí aplicamos la función handleCodigoChange */}
+          <input placeholder="Código (Escribe para autocompletar)" value={carga.codigo} onChange={handleCodigoChange} required style={{padding: '8px', border: '2px solid #28a745'}}/>
+          
           <input placeholder="Categoría" value={carga.categoria} onChange={e => setCarga({...carga, categoria: e.target.value})} style={{padding: '8px'}}/>
           <input placeholder="Nombre" value={carga.nombre} onChange={e => setCarga({...carga, nombre: e.target.value})} required style={{padding: '8px'}}/>
           <input placeholder="Marca" value={carga.marca} onChange={e => setCarga({...carga, marca: e.target.value})} style={{padding: '8px'}}/>
           <input placeholder="Costo" type="number" value={carga.costo} onChange={e => setCarga({...carga, costo: e.target.value})} style={{padding: '8px'}}/>
           <input placeholder="Precio Venta" type="number" value={carga.venta} onChange={e => setCarga({...carga, venta: e.target.value})} style={{padding: '8px'}}/>
-          <input placeholder="Cantidad" type="number" value={carga.cantidad} onChange={e => setCarga({...carga, cantidad: e.target.value})} required style={{padding: '8px'}}/>
-          <button type="submit" style={{ padding: '10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px' }}>Guardar Producto</button>
+          <input placeholder="Cantidad a SUMAR" type="number" value={carga.cantidad} onChange={e => setCarga({...carga, cantidad: e.target.value})} required style={{padding: '8px', border: '2px solid #007bff'}}/>
+          
+          <button type="submit" style={{ padding: '10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px' }}>Guardar / Actualizar</button>
         </form>
       )}
 
