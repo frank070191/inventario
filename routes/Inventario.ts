@@ -7,7 +7,7 @@ const router = express.Router();
 const guardarHistorial = async (tipo: string, codigo: string, cantidad: string) => {
   try {
     const sheetHistorial = await getSheet('Historial');
-    const fecha = new Date().toLocaleString(); // Fecha y hora actual
+    const fecha = new Date().toLocaleString();
     await sheetHistorial.addRow({
       Fecha: fecha,
       Tipo: tipo,
@@ -16,7 +16,6 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string) 
     });
   } catch (error: any) {
     console.error('Error al guardar en historial:', error);
-    throw new Error(error.message || 'Fallo al guardar historial'); // <-- Agrega esta línea
   }
 };
 
@@ -40,7 +39,7 @@ router.get('/', async (req, res) => {
   }
 });
 
-// 2. CARGAR MERCANCÍA
+// 2. CARGAR MERCANCÍA (Suma stock o actualiza precios si ya existe)
 router.post('/cargar', async (req, res) => {
   try {
     const { codigo, categoria, nombre, marca, costo, venta, cantidad } = req.body;
@@ -50,12 +49,23 @@ router.post('/cargar', async (req, res) => {
     const producto = rows.find((row: any) => row.get('CODIGO') === codigo);
 
     if (producto) {
+      // Si el producto ya existe, sumamos la cantidad
       const nuevaExistencia = parseInt(producto.get('EXISTENCIA') || '0') + parseInt(cantidad);
       producto.set('EXISTENCIA', nuevaExistencia.toString());
+      
+      // Y actualizamos los precios si es que se enviaron nuevos
+      if (costo) producto.set('COSTO', costo);
+      if (venta) producto.set('VENTA', venta);
+      // (Opcional) Actualizar otros campos si vienen en el formulario
+      if (categoria) producto.set('CATEGORIA', categoria);
+      if (nombre) producto.set('NOMBRE', nombre);
+      if (marca) producto.set('MARCA', marca);
+
       await producto.save();
       await guardarHistorial('Carga', codigo, cantidad);
-      res.json({ message: 'Stock actualizado correctamente', nuevaExistencia });
+      res.json({ message: 'Stock y precios actualizados correctamente', nuevaExistencia });
     } else {
+      // Si es nuevo, lo creamos
       await sheet.addRow({
         CODIGO: codigo, CATEGORIA: categoria, NOMBRE: nombre, MARCA: marca, COSTO: costo, VENTA: venta, EXISTENCIA: cantidad
       });
@@ -63,6 +73,7 @@ router.post('/cargar', async (req, res) => {
       res.json({ message: 'Producto nuevo cargado correctamente' });
     }
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error al cargar mercancía' });
   }
 });
