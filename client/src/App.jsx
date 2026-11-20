@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import './App.css'; // <-- Importamos los nuevos estilos
+import './App.css'; // Importamos los nuevos estilos
 
 const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario'; // Tu URL real
 
@@ -99,8 +99,9 @@ function App() {
             <table>
               <thead>
                 <tr>
-                  <th className="texto-centro">Código</th>
-                  <th>Nombre</th>
+                  {/* CAMBIO 1: Encabezado de código alineado a la izquierda */}
+                  <th style={{ textAlign: 'left' }}>Código</th>
+                  <th style={{ textAlign: 'left' }}>Nombre</th>
                   <th className="texto-derecha">Precio Venta</th>
                   <th className="texto-centro">Existencia</th>
                 </tr>
@@ -108,8 +109,9 @@ function App() {
               <tbody>
                 {productosFiltrados.map((p, i) => (
                   <tr key={i}>
-                    <td className="texto-centro">{p.Codigo}</td>
-                    <td style={{fontWeight: 'bold', color: '#2c3e50'}}>{p.Nombre}</td>
+                    {/* CAMBIO 2: Celdas de código y nombre alineadas a la izquierda */}
+                    <td style={{ textAlign: 'left' }}>{p.Codigo}</td>
+                    <td style={{ textAlign: 'left', fontWeight: 'bold', color: '#2c3e50' }}>{p.Nombre}</td>
                     <td className="texto-derecha" style={{color: '#28a745', fontWeight: 'bold'}}>${p.Venta}</td>
                     <td className="texto-centro">{p.Existencia}</td>
                   </tr>
