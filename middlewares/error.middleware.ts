@@ -30,7 +30,7 @@ export const errorHandler = (err: any, req: any, res: any, next: any) => {
 };
 
 export const createError = (message: any, statusCode: any = 500) => {
-  const error = new Error(message);
+  const error: any = new Error(message);
   error.statusCode = statusCode;
   error.isOperational = true;
   return error;
