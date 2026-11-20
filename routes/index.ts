@@ -1,6 +1,6 @@
 import { Router } from 'express';
 
-import InventarioRouter from './Inventario';
+import InventarioRouter from './Inventario.js';
 const router = Router();
 
 // Health check route
