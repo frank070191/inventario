@@ -91,12 +91,13 @@ function App() {
     } catch (error) { setMensaje('Error al cargar.'); }
   };
 
+  // --- CORRECCIÓN AQUÍ ---
   const handleCodigoVentaChange = (e) => {
     const codigo = e.target.value;
     const prod = productos.find(p => p.Codigo === codigo);
     if (prod) {
-      // AQUI LLENAMOS EL PRECIO
-      setProductoActual({ codigo, cantidad: '', precio: prod.Venta || '' });
+      // Nos aseguramos de que el precio se guarde como string limpio
+      setProductoActual({ codigo, cantidad: '', precio: prod.Venta ? prod.Venta.toString() : '' });
     } else {
       setProductoActual({ codigo, cantidad: '', precio: '' });
     }
@@ -238,7 +239,6 @@ function App() {
                     <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>{p.Nombre}</td>
                     <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{p.Marca}</td>
                     <td style={{ textAlign: 'center', fontSize: '12px', padding: '10px' }}>{p.Estante}</td>
-                    {/* LEE EL PRECIO */}
                     <td style={{ textAlign: 'right', color: '#28a745', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(p.Venta)}</td>
                     <td style={{ textAlign: 'center', fontSize: '12px', padding: '10px' }}>{p.Existencia}</td>
                   </tr>
