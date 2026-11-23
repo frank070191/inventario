@@ -43,7 +43,8 @@ function App() {
       const res = await fetch(`${API_URL}/tasa`);
       const data = await res.json();
       setTasa(data.tasa);
-      setTasaManualInput(data.tasa.toString());
+      // Reemplazamos el punto por coma para mostrarlo bonito en el input
+      setTasaManualInput(data.tasa.toString().replace('.', ','));
     } catch (error) { console.error('Error tasa'); }
   };
 
@@ -64,7 +65,9 @@ function App() {
       if (res.ok) {
         setTasa(data.tasa);
         setEditandoTasa(false);
-        setMensaje(`Tasa actualizada a ${data.tasa} Bs/$`);
+        setMensaje(`Tasa actualizada a ${data.tasa.toFixed(4)} Bs/$`);
+      } else {
+        setMensaje(data.error);
       }
     } catch (error) { setMensaje('Error al guardar tasa'); }
   };
@@ -147,7 +150,8 @@ function App() {
           <button onClick={() => setEditandoTasa(true)} style={{ marginLeft: '10px', padding: '5px', fontSize: '12px', cursor: 'pointer', borderRadius: '5px', border: '1px solid #ccc' }}>✏️</button>
         ) : (
           <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '5px' }}>
-            <input type="number" step="0.0001" value={tasaManualInput} onChange={e => setTasaManualInput(e.target.value)} style={{ padding: '5px', width: '100px', borderRadius: '5px', border: '1px solid #ccc' }} />
+            {/* CAMBIAMOS A type="text" PARA QUE ACEPTE LA COMA */}
+            <input type="text" value={tasaManualInput} onChange={e => setTasaManualInput(e.target.value)} style={{ padding: '5px', width: '100px', borderRadius: '5px', border: '1px solid #ccc' }} />
             <button onClick={guardarTasaManual} style={{ padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px' }}>OK</button>
             <button onClick={() => setEditandoTasa(false)} style={{ padding: '5px 10px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px' }}>X</button>
           </div>
@@ -186,7 +190,7 @@ function App() {
                     <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>{p.Nombre}</td>
                     <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{p.Marca}</td>
                     <td style={{ textAlign: 'center', fontSize: '12px', padding: '10px' }}>{p.Estante}</td>
-                    <td style={{ textAlign: 'right', color: '#28a745', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${p.Venta}</td>
+                    <td style={{ textAlign: 'right', color: '#28a745', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(p.Venta)}</td>
                     <td style={{ textAlign: 'center', fontSize: '12px', padding: '10px' }}>{p.Existencia}</td>
                   </tr>
                 ))}

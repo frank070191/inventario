@@ -11,7 +11,7 @@ const obtenerTasaManualGuardada = async () => {
     if (rows.length > 0) {
       const val = rows[0].get('TasaManual');
       if (!val) return null;
-      // Convertimos cualquier coma en punto para que JS lo lea bien
+      // Convertimos cualquier coma en punto por si el sheet la guardó como texto
       return parseFloat(val.toString().replace(',', '.'));
     }
     return null;
@@ -60,10 +60,10 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
       Codigo: codigo, 
       Cantidad: cantidad, 
       Pago: pagoResumen, 
-      // Forzamos a que el Sheet lo guarde como número con punto decimal (estándar de la librería)
-      Tasa: tasa.toFixed(4), 
-      TotalUSD: totalUSD.toFixed(2),
-      TotalBS: totalBS.toFixed(2)
+      // Forzamos a que el Sheet lo guarde como número con punto decimal
+      Tasa: tasa.toFixed(4).toString(), 
+      TotalUSD: totalUSD.toFixed(2).toString(),
+      TotalBS: totalBS.toFixed(2).toString()
     });
   } catch (error: any) { console.error('Error historial:', error); }
 };
@@ -145,9 +145,11 @@ router.post('/tasa-manual', async (req, res) => {
   const { nuevaTasa } = req.body;
   if (nuevaTasa) {
     try {
-      // 1. Convertimos la coma a punto por si el usuario escribió "919,8227"
-      const tasaStringLimpia = nuevaTasa.toString().replace(',', '.');
-      // 2. Lo convertimos a número y lo formateamos con 4 decimales exactos
+      // 1. Convertimos a string para poder manipularlo
+      const tasaString = nuevaTasa.toString();
+      // 2. Si el usuario escribió "919,8227", lo convertimos a "919.8227"
+      const tasaStringLimpia = tasaString.replace(',', '.');
+      // 3. Lo pasamos a número
       const tasaNumerica = parseFloat(tasaStringLimpia);
       
       if (isNaN(tasaNumerica) || tasaNumerica <= 0) {
@@ -158,8 +160,8 @@ router.post('/tasa-manual', async (req, res) => {
       const rows = await sheetConfig.getRows();
       const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" });
       
-      // 3. Guardamos con punto decimal, que es lo que Google Sheets entiende como número
-      const tasaFormateada = tasaNumerica.toFixed(4); // Ej: "919.8227"
+      // 4. Forzamos 4 decimales en formato string con punto (ej: "919.8227")
+      const tasaFormateada = tasaNumerica.toFixed(4); 
 
       if (rows.length > 0) {
         rows[0].set('TasaManual', tasaFormateada);
@@ -169,6 +171,7 @@ router.post('/tasa-manual', async (req, res) => {
         await sheetConfig.addRow({ TasaManual: tasaFormateada, Fecha: fecha });
       }
       
+      // 5. Devolvemos el número limpio al frontend
       res.json({ message: 'Tasa guardada permanentemente', tasa: tasaNumerica });
     } catch (error) {
       console.error(error);
