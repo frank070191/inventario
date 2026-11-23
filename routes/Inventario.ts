@@ -3,20 +3,45 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// Obtener tasa BCV con AllRatesToday (Tasa oficial vigente)
+// Obtener tasa BCV directamente del portal oficial (con fallback a AllRatesToday)
 const obtenerTasaBCV = async () => {
   try {
-    const res = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
-    const data = await res.json();
+    // 1. Intentamos leer directamente la página del BCV
+    const res = await fetch('https://www.bcv.org.ve/', {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
     
-    if (data && data.rate) {
-      console.log(`Tasa BCV obtenida: ${data.rate} (Vigente desde: ${data.rate_date})`);
-      return data.rate;
+    if (!res.ok) throw new Error('Error al conectar con el BCV');
+    
+    const html = await res.text();
+    
+    // 2. Buscamos el valor del dólar dentro del HTML
+    const match = html.match(/id="dolar"[\s\S]*?<strong>\s*([\d.,]+)\s*<\/strong>/);
+    
+    if (match && match[1]) {
+      // 3. Limpiamos el formato venezolano (ej. 919,8227 -> 919.8227)
+      const tasaStr = match[1].replace(/\./g, '').replace(',', '.');
+      const tasa = parseFloat(tasaStr);
+      console.log(`✅ Tasa BCV oficial obtenida: ${tasa}`);
+      return tasa;
     }
-    return 0; 
+    throw new Error('No se pudo encontrar el valor en el HTML del BCV');
+    
   } catch (error) {
-    console.error('Error obteniendo tasa BCV desde AllRatesToday:', error);
-    return 0;
+    console.error('⚠️ Error obteniendo tasa del BCV directo:', error);
+    
+    // 4. Respaldo: Si el BCV falla, usamos AllRatesToday
+    try {
+      console.log('Intentando con API de respaldo (AllRatesToday)...');
+      const resFallback = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
+      const data = await resFallback.json();
+      return data.rate || 0;
+    } catch (fallbackError) {
+      console.error('❌ Error en API de respaldo:', fallbackError);
+      return 0;
+    }
   }
 };
 
@@ -114,7 +139,7 @@ router.post('/vender', async (req, res) => {
     const precioVenta = parseFloat(precioManual) || parseFloat(producto.get('VENTA') || '0');
     const totalUSD = precioVenta * cantidadVender;
     
-    // Obtenemos la tasa vigente (funciona para fines de semana también)
+    // Obtenemos la tasa vigente
     const tasaBCV = await obtenerTasaBCV();
     const totalBS = totalUSD * tasaBCV;
 
@@ -139,7 +164,7 @@ router.post('/vender', async (req, res) => {
   }
 });
 
-// 4. OBTENER TASA DEL DÍA (Para mostrarla en el frontend)
+// 4. OBTENER TASA DEL DÍA
 router.get('/tasa', async (req, res) => {
     const tasa = await obtenerTasaBCV();
     res.json({ tasa });
