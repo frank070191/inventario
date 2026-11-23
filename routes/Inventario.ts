@@ -10,8 +10,9 @@ const obtenerTasaManualGuardada = async () => {
     const rows = await sheetConfig.getRows();
     if (rows.length > 0) {
       const val = rows[0].get('TasaManual');
-      // Forzamos que sea un número con punto decimal
-      return val ? parseFloat(val.replace(',', '.')) : null;
+      if (!val) return null;
+      // Convertimos cualquier coma en punto para que JS lo lea bien
+      return parseFloat(val.toString().replace(',', '.'));
     }
     return null;
   } catch (error) {
@@ -59,7 +60,7 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
       Codigo: codigo, 
       Cantidad: cantidad, 
       Pago: pagoResumen, 
-      // Guardamos como número con 4 decimales y punto
+      // Forzamos a que el Sheet lo guarde como número con punto decimal (estándar de la librería)
       Tasa: tasa.toFixed(4), 
       TotalUSD: totalUSD.toFixed(2),
       TotalBS: totalBS.toFixed(2)
@@ -142,14 +143,23 @@ router.get('/tasa', async (req, res) => { res.json({ tasa: await obtenerTasaBCV(
 // RUTA CORREGIDA PARA GUARDAR LA TASA MANUAL
 router.post('/tasa-manual', async (req, res) => {
   const { nuevaTasa } = req.body;
-  if (nuevaTasa && !isNaN(nuevaTasa) && nuevaTasa > 0) {
+  if (nuevaTasa) {
     try {
+      // 1. Convertimos la coma a punto por si el usuario escribió "919,8227"
+      const tasaStringLimpia = nuevaTasa.toString().replace(',', '.');
+      // 2. Lo convertimos a número y lo formateamos con 4 decimales exactos
+      const tasaNumerica = parseFloat(tasaStringLimpia);
+      
+      if (isNaN(tasaNumerica) || tasaNumerica <= 0) {
+        return res.status(400).json({ error: 'Tasa inválida' });
+      }
+
       const sheetConfig = await getSheet('Configuracion');
       const rows = await sheetConfig.getRows();
       const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" });
       
-      // Formateamos con 4 decimales y punto, para que el Sheet lo lea perfecto
-      const tasaFormateada = parseFloat(nuevaTasa).toFixed(4);
+      // 3. Guardamos con punto decimal, que es lo que Google Sheets entiende como número
+      const tasaFormateada = tasaNumerica.toFixed(4); // Ej: "919.8227"
 
       if (rows.length > 0) {
         rows[0].set('TasaManual', tasaFormateada);
@@ -158,8 +168,10 @@ router.post('/tasa-manual', async (req, res) => {
       } else {
         await sheetConfig.addRow({ TasaManual: tasaFormateada, Fecha: fecha });
       }
-      res.json({ message: 'Tasa guardada permanentemente', tasa: parseFloat(tasaFormateada) });
+      
+      res.json({ message: 'Tasa guardada permanentemente', tasa: tasaNumerica });
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: 'Error al guardar en Sheets' });
     }
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
@@ -178,8 +190,8 @@ router.get('/reporte-hoy', async (req, res) => {
       Codigo: row.get('Codigo'),
       Cantidad: row.get('Cantidad'),
       Pago: row.get('Pago'),
-      TotalUSD: parseFloat((row.get('TotalUSD') || '0').replace(',', '.')),
-      TotalBS: parseFloat((row.get('TotalBS') || '0').replace(',', '.'))
+      TotalUSD: parseFloat((row.get('TotalUSD') || '0').toString().replace(',', '.')),
+      TotalBS: parseFloat((row.get('TotalBS') || '0').toString().replace(',', '.'))
     }));
 
     const granTotalUSD = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalUSD, 0);
