@@ -285,7 +285,7 @@ function App() {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(reporte.desglosePagos).map(([metodo, montos]: [string, any], i) => (
+                    {Object.entries(reporte.desglosePagos).map(([metodo, montos], i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                         <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{metodo}</td>
                         <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${montos.usd.toFixed(2)}</td>
