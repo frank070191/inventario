@@ -4,6 +4,15 @@ import './App.css';
 const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario'; // Asegúrate de que sea tu URL
 const METODOS_PAGO = ["T. Débito Bancamiga", "T. Crédito Banca", "PM Empresa", "PM Persona", "Biopago", "Transf Vzla", "Transf. Bancamiga", "T. Débito BNC", "T. Crédito BNC", "Cashea"];
 
+// Función para formatear números (Ej: 12345.67 -> 12.345,67)
+const formatoMoneda = (numero) => {
+  if (isNaN(numero)) return '0,00';
+  return new Intl.NumberFormat('es-VE', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2
+  }).format(numero);
+};
+
 function App() {
   const [vista, setVista] = useState('consultar');
   const [productos, setProductos] = useState([]);
@@ -105,7 +114,7 @@ function App() {
       const res = await fetch(`${API_URL}/vender`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
       
-      setMensaje(`${data.message || data.error} - Total: $${data.totalUSD?.toFixed(2)} / Bs. ${data.totalBS?.toFixed(2)}`);
+      setMensaje(`${data.message || data.error} - Total: $${formatoMoneda(data.totalUSD)} / Bs. ${formatoMoneda(data.totalBS)}`);
       
       setVenta({ codigo: '', cantidad: '', precioManual: '' });
       setPagos([{ metodo: METODOS_PAGO[0], monto: '' }]);
@@ -133,7 +142,6 @@ function App() {
       <h1 style={{ textAlign: 'center', color: '#2c3e50', textTransform: 'uppercase' }}>Sistema de Inventario</h1>
       
       <div style={{ textAlign: 'center', marginBottom: '20px', fontWeight: 'bold', color: '#2c3e50', fontSize: '14px' }}>
-        {/* AQUI CAMBIAMOS A toFixed(4) PARA MOSTRAR 4 DECIMALES */}
         Tasa BCV: <span style={{ color: '#28a745' }}>{tasa ? `${tasa.toFixed(4)} Bs/$` : '...'}</span>
         {!editandoTasa ? (
           <button onClick={() => setEditandoTasa(true)} style={{ marginLeft: '10px', padding: '5px', fontSize: '12px', cursor: 'pointer', borderRadius: '5px', border: '1px solid #ccc' }}>✏️</button>
@@ -243,12 +251,12 @@ function App() {
           {totalVentaActual > 0 && (
             <div style={{ textAlign: 'center', marginTop: '10px', padding: '10px', backgroundColor: '#e9ecef', borderRadius: '8px' }}>
               <p style={{ margin: '5px 0', fontWeight: 'bold', color: '#2c3e50', fontSize: '14px' }}>
-                Total: ${totalVentaActual.toFixed(2)} <br/>
-                <span style={{ color: '#28a745' }}>Bs. {(totalVentaActual * tasa).toFixed(2)}</span>
+                Total: ${formatoMoneda(totalVentaActual)} <br/>
+                <span style={{ color: '#28a745' }}>Bs. {formatoMoneda(totalVentaActual * tasa)}</span>
               </p>
               <hr style={{ border: '0.5px solid #ccc', margin: '5px 0' }} />
               <p style={{ margin: '5px 0', fontWeight: 'bold', color: restante > 0 ? '#dc3545' : '#28a745', fontSize: '14px' }}>
-                {restante > 0 ? `Falta: $${restante.toFixed(2)}` : `Vuelto: $${Math.abs(restante).toFixed(2)}`}
+                {restante > 0 ? `Falta: $${formatoMoneda(restante)}` : `Vuelto: $${formatoMoneda(Math.abs(restante))}`}
               </p>
             </div>
           )}
@@ -267,11 +275,11 @@ function App() {
               <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
                   <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total ($)</p>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>${reporte.granTotalUSD.toFixed(2)}</p>
+                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>${formatoMoneda(reporte.granTotalUSD)}</p>
                 </div>
                 <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
                   <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total (Bs)</p>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>Bs. {reporte.granTotalBS.toFixed(2)}</p>
+                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>Bs. {formatoMoneda(reporte.granTotalBS)}</p>
                 </div>
               </div>
 
@@ -289,8 +297,8 @@ function App() {
                     {Object.entries(reporte.desglosePagos).map(([metodo, montos], i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                         <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{metodo}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${montos.usd.toFixed(2)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', color: '#28a745', padding: '10px' }}>Bs. {montos.bs.toFixed(2)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(montos.usd)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', color: '#28a745', padding: '10px' }}>Bs. {formatoMoneda(montos.bs)}</td>
                       </tr>
                     ))}
                     {Object.keys(reporte.desglosePagos).length === 0 && (
@@ -317,7 +325,7 @@ function App() {
                         <td style={{ textAlign: 'left', fontSize: '11px', padding: '10px' }}>{v.Fecha.split(', ')[1]}</td>
                         <td style={{ textAlign: 'left', fontSize: '11px', padding: '10px' }}>{v.Codigo}</td>
                         <td style={{ textAlign: 'center', fontSize: '11px', padding: '10px' }}>{v.Cantidad}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '11px', padding: '10px' }}>${v.TotalUSD.toFixed(2)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '11px', padding: '10px' }}>${formatoMoneda(v.TotalUSD)}</td>
                       </tr>
                     ))}
                   </tbody>
