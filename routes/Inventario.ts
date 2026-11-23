@@ -125,16 +125,14 @@ router.post('/tasa-manual', (req, res) => {
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
 });
 
-// 6. NUEVA RUTA: REPORTE DE VENTAS DEL DÍA
+// 6. NUEVA RUTA: REPORTE DE VENTAS DEL DÍA (CON TIPOS AGREGADOS)
 router.get('/reporte-hoy', async (req, res) => {
   try {
     const sheetHistorial = await getSheet('Historial');
     const rows = await sheetHistorial.getRows();
     
-    // Obtenemos la fecha de hoy en formato de Venezuela (DD/MM/YYYY)
     const hoy = new Date().toLocaleDateString("es-VE", { timeZone: "America/Caracas" });
     
-    // Filtramos solo las ventas de hoy
     const ventasHoy = rows.filter((row: any) => {
       const fechaFila = row.get('Fecha') || '';
       const tipo = row.get('Tipo') || '';
@@ -148,16 +146,15 @@ router.get('/reporte-hoy', async (req, res) => {
       TotalBS: parseFloat(row.get('TotalBS') || '0')
     }));
 
-    // Calculamos los totales generales
-    const granTotalUSD = ventasHoy.reduce((acc, v) => acc + v.TotalUSD, 0);
-    const granTotalBS = ventasHoy.reduce((acc, v) => acc + v.TotalBS, 0);
+    // Aquí agregamos :any a acc y v
+    const granTotalUSD = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalUSD, 0);
+    const granTotalBS = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalBS, 0);
 
-    // Calculamos el desglose por método de pago
     const metodosMap: { [key: string]: number } = {};
-    ventasHoy.forEach(venta => {
+    // Aquí agregamos :any a venta
+    ventasHoy.forEach((venta: any) => {
       const pagosArray = venta.Pago.split(' | ');
       pagosArray.forEach((pagoStr: string) => {
-        // Formato esperado: "Metodo: $10.00"
         const [metodo, montoStr] = pagoStr.split(': $');
         if (metodo && montoStr) {
           const monto = parseFloat(montoStr);
