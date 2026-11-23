@@ -3,7 +3,6 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// --- GESTIÓN DE TASAS ---
 const obtenerTasaManualGuardada = async () => {
   try {
     const sheetConfig = await getSheet('Configuracion');
@@ -43,7 +42,6 @@ const obtenerTasaBCV = async () => {
   }
 };
 
-// --- HISTORIAL ---
 const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, pagoResumen: string, tasa: number, totalUSD: number, totalBS: number) => {
   try {
     const sheetHistorial = await getSheet('Historial');
@@ -57,18 +55,27 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
   } catch (error: any) { console.error('Error historial:', error); }
 };
 
-// --- RUTAS ---
+// --- RUTA DE CONSULTA CORREGIDA ---
 router.get('/', async (req, res) => {
   try {
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
     const data = rows.map((row: any) => ({
-      Codigo: row.get('CODIGO'), Proveedor: row.get('PROVEEDOR') || '', Nombre: row.get('NOMBRE'),
-      Marca: row.get('MARCA') || '', Estante: row.get('ESTANTE') || '', Costo: row.get('COSTO'),
-      Venta: row.get('VENTA'), Existencia: row.get('EXISTENCIA')
+      Codigo: row.get('CODIGO') || '',
+      Proveedor: row.get('PROVEEDOR') || '',
+      Nombre: row.get('NOMBRE') || '',
+      Marca: row.get('MARCA') || '',
+      Estante: row.get('ESTANTE') || '',
+      Costo: row.get('COSTO') || '0',
+      // IMPORTANTE: Leemos 'VENTA' y nos aseguramos que sea texto
+      Venta: row.get('VENTA') ? row.get('VENTA').toString() : '0',
+      Existencia: row.get('EXISTENCIA') || '0'
     }));
     res.json(data);
-  } catch (error) { res.status(500).json({ error: 'Error al leer inventario' }); }
+  } catch (error) { 
+    console.error(error);
+    res.status(500).json({ error: 'Error al leer inventario' }); 
+  }
 });
 
 router.post('/cargar', async (req, res) => {
@@ -100,29 +107,24 @@ router.post('/cargar', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error al cargar' }); }
 });
 
-// VENTA MÚLTIPLE
 router.post('/vender', async (req, res) => {
   try {
-    const { carrito, pagos } = req.body; // Recibimos un array de productos (carrito)
+    const { carrito, pagos } = req.body; 
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
     
-    // 1. Validar stock de todos los productos primero
     for (const item of carrito) {
       const producto = rows.find((row: any) => row.get('CODIGO') === item.codigo);
       if (!producto) return res.status(404).json({ error: `Producto ${item.codigo} no encontrado` });
-      
       const existenciaActual = parseInt(producto.get('EXISTENCIA') || '0');
       if (existenciaActual < parseInt(item.cantidad)) {
         return res.status(400).json({ error: `No hay stock suficiente de ${producto.get('NOMBRE')}` });
       }
     }
 
-    // 2. Si todo está bien, procesar la venta
     const tasaBCV = await obtenerTasaBCV();
     let granTotalUSD = 0;
     let granTotalBS = 0;
-    
     const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2).replace('.', ',')}`).join(' | ');
 
     for (const item of carrito) {
@@ -136,12 +138,10 @@ router.post('/vender', async (req, res) => {
       granTotalUSD += totalUSD;
       granTotalBS += totalBS;
 
-      // Descontar stock
       const existenciaActual = parseInt(producto.get('EXISTENCIA') || '0');
       producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
       await producto.save();
 
-      // Guardar registro individual en historial
       await guardarHistorial('Venta', item.codigo, item.cantidad, pagoResumen, tasaBCV, totalUSD, totalBS);
     }
     
@@ -154,7 +154,6 @@ router.post('/vender', async (req, res) => {
 
 router.get('/tasa', async (req, res) => { res.json({ tasa: await obtenerTasaBCV() }); });
 
-// ACTUALIZAR TASA Y GUARDAR HISTORIAL
 router.post('/tasa-manual', async (req, res) => {
   const { nuevaTasa } = req.body;
   if (nuevaTasa) {
@@ -167,7 +166,6 @@ router.post('/tasa-manual', async (req, res) => {
       const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" });
       const tasaFormateada = tasaNumerica.toFixed(4).replace('.', ',');
 
-      // Actualizamos la tasa principal (Configuracion)
       if (rows.length > 0) {
         rows[0].set('TasaManual', tasaFormateada);
         rows[0].set('Fecha', fecha);
@@ -176,13 +174,8 @@ router.post('/tasa-manual', async (req, res) => {
         await sheetConfig.addRow({ TasaManual: tasaFormateada, Fecha: fecha });
       }
 
-      // Guardamos el registro en el Historial de Tasas
       const sheetTasas = await getSheet('Tasas');
-      await sheetTasas.addRow({
-        Fecha: fecha,
-        Tasa: tasaFormateada,
-        Usuario: 'Admin' // Puedes cambiarlo si luego agregas login
-      });
+      await sheetTasas.addRow({ Fecha: fecha, Tasa: tasaFormateada, Usuario: 'Admin' });
       
       res.json({ message: 'Tasa guardada', tasa: tasaNumerica });
     } catch (error) {
@@ -192,7 +185,6 @@ router.post('/tasa-manual', async (req, res) => {
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
 });
 
-// REPORTE
 router.get('/reporte-hoy', async (req, res) => {
   try {
     const sheetHistorial = await getSheet('Historial');

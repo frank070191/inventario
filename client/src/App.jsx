@@ -7,8 +7,8 @@ const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario';
 const METODOS_PAGO = ["T. Débito Bancamiga", "T. Crédito Banca", "PM Empresa", "PM Persona", "Biopago", "Transf Vzla", "Transf. Bancamiga", "T. Débito BNC", "T. Crédito BNC", "Cashea"];
 
 const formatoMoneda = (numero) => {
-  if (isNaN(numero) || numero === null || numero === undefined) return '0,00';
-  return new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(numero);
+  if (numero === null || numero === undefined || isNaN(parseFloat(numero))) return '0,00';
+  return new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(parseFloat(numero));
 };
 
 function App() {
@@ -91,12 +91,11 @@ function App() {
     } catch (error) { setMensaje('Error al cargar.'); }
   };
 
-  // --- LÓGICA DEL CARRITO Y AUTOCOMPLETADO DE PRECIO ---
   const handleCodigoVentaChange = (e) => {
     const codigo = e.target.value;
     const prod = productos.find(p => p.Codigo === codigo);
     if (prod) {
-      // Aquí llenamos el precio automáticamente con el valor de la hoja
+      // AQUI LLENAMOS EL PRECIO
       setProductoActual({ codigo, cantidad: '', precio: prod.Venta || '' });
     } else {
       setProductoActual({ codigo, cantidad: '', precio: '' });
@@ -117,7 +116,6 @@ function App() {
     if (existeIndex >= 0) {
       const nuevoCarrito = [...carrito];
       nuevoCarrito[existeIndex].cantidad = (parseInt(nuevoCarrito[existeIndex].cantidad) + parseInt(productoActual.cantidad)).toString();
-      // Actualizamos también el precio por si lo cambiaron
       nuevoCarrito[existeIndex].precio = productoActual.precio;
       setCarrito(nuevoCarrito);
     } else {
@@ -240,7 +238,7 @@ function App() {
                     <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>{p.Nombre}</td>
                     <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{p.Marca}</td>
                     <td style={{ textAlign: 'center', fontSize: '12px', padding: '10px' }}>{p.Estante}</td>
-                    {/* AQUÍ LEEMOS EL PRECIO CORRECTAMENTE (p.Venta) */}
+                    {/* LEE EL PRECIO */}
                     <td style={{ textAlign: 'right', color: '#28a745', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(p.Venta)}</td>
                     <td style={{ textAlign: 'center', fontSize: '12px', padding: '10px' }}>{p.Existencia}</td>
                   </tr>
