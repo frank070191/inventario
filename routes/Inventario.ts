@@ -3,14 +3,15 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// Obtener la tasa manual guardada en Google Sheets (si existe)
+// Obtener la tasa manual guardada en Google Sheets
 const obtenerTasaManualGuardada = async () => {
   try {
     const sheetConfig = await getSheet('Configuracion');
     const rows = await sheetConfig.getRows();
     if (rows.length > 0) {
       const val = rows[0].get('TasaManual');
-      return val ? parseFloat(val) : null;
+      // Forzamos que sea un número con punto decimal
+      return val ? parseFloat(val.replace(',', '.')) : null;
     }
     return null;
   } catch (error) {
@@ -19,7 +20,6 @@ const obtenerTasaManualGuardada = async () => {
 };
 
 const obtenerTasaBCV = async () => {
-  // Primero revisamos si hay una tasa guardada en la hoja
   const tasaGuardada = await obtenerTasaManualGuardada();
   if (tasaGuardada && tasaGuardada > 0) return tasaGuardada;
 
@@ -54,7 +54,15 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
     const sheetHistorial = await getSheet('Historial');
     const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" }); 
     await sheetHistorial.addRow({
-      Fecha: fecha, Tipo: tipo, Codigo: codigo, Cantidad: cantidad, Pago: pagoResumen, Tasa: tasa, TotalUSD: totalUSD, TotalBS: totalBS
+      Fecha: fecha, 
+      Tipo: tipo, 
+      Codigo: codigo, 
+      Cantidad: cantidad, 
+      Pago: pagoResumen, 
+      // Guardamos como número con 4 decimales y punto
+      Tasa: tasa.toFixed(4), 
+      TotalUSD: totalUSD.toFixed(2),
+      TotalBS: totalBS.toFixed(2)
     });
   } catch (error: any) { console.error('Error historial:', error); }
 };
@@ -131,7 +139,7 @@ router.post('/vender', async (req, res) => {
 
 router.get('/tasa', async (req, res) => { res.json({ tasa: await obtenerTasaBCV() }); });
 
-// Guardar la tasa manual en Google Sheets permanentemente
+// RUTA CORREGIDA PARA GUARDAR LA TASA MANUAL
 router.post('/tasa-manual', async (req, res) => {
   const { nuevaTasa } = req.body;
   if (nuevaTasa && !isNaN(nuevaTasa) && nuevaTasa > 0) {
@@ -140,21 +148,23 @@ router.post('/tasa-manual', async (req, res) => {
       const rows = await sheetConfig.getRows();
       const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" });
       
+      // Formateamos con 4 decimales y punto, para que el Sheet lo lea perfecto
+      const tasaFormateada = parseFloat(nuevaTasa).toFixed(4);
+
       if (rows.length > 0) {
-        rows[0].set('TasaManual', nuevaTasa.toString());
+        rows[0].set('TasaManual', tasaFormateada);
         rows[0].set('Fecha', fecha);
         await rows[0].save();
       } else {
-        await sheetConfig.addRow({ TasaManual: nuevaTasa.toString(), Fecha: fecha });
+        await sheetConfig.addRow({ TasaManual: tasaFormateada, Fecha: fecha });
       }
-      res.json({ message: 'Tasa guardada permanentemente', tasa: nuevaTasa });
+      res.json({ message: 'Tasa guardada permanentemente', tasa: parseFloat(tasaFormateada) });
     } catch (error) {
       res.status(500).json({ error: 'Error al guardar en Sheets' });
     }
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
 });
 
-// REPORTE DE VENTAS DEL DÍA (Desglose con montos en Bs)
 router.get('/reporte-hoy', async (req, res) => {
   try {
     const sheetHistorial = await getSheet('Historial');
@@ -168,17 +178,14 @@ router.get('/reporte-hoy', async (req, res) => {
       Codigo: row.get('Codigo'),
       Cantidad: row.get('Cantidad'),
       Pago: row.get('Pago'),
-      TotalUSD: parseFloat(row.get('TotalUSD') || '0'),
-      TotalBS: parseFloat(row.get('TotalBS') || '0')
+      TotalUSD: parseFloat((row.get('TotalUSD') || '0').replace(',', '.')),
+      TotalBS: parseFloat((row.get('TotalBS') || '0').replace(',', '.'))
     }));
 
     const granTotalUSD = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalUSD, 0);
     const granTotalBS = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalBS, 0);
 
-    // Desglose por método de pago (Monto en $ y su equivalente en Bs)
     const metodosMap: { [key: string]: { usd: number, bs: number } } = {};
-    
-    // Usamos la tasa del día para calcular el Bs de los pagos (asumiendo que la tasa se mantuvo igual)
     const tasaHoy = await obtenerTasaBCV();
 
     ventasHoy.forEach((venta: any) => {
@@ -189,7 +196,7 @@ router.get('/reporte-hoy', async (req, res) => {
           const montoUSD = parseFloat(montoStr);
           if (!metodosMap[metodo]) metodosMap[metodo] = { usd: 0, bs: 0 };
           metodosMap[metodo].usd += montoUSD;
-          metodosMap[metodo].bs += (montoUSD * tasaHoy); // Calculamos el Bs
+          metodosMap[metodo].bs += (montoUSD * tasaHoy);
         }
       });
     });

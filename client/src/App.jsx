@@ -133,12 +133,13 @@ function App() {
       <h1 style={{ textAlign: 'center', color: '#2c3e50', textTransform: 'uppercase' }}>Sistema de Inventario</h1>
       
       <div style={{ textAlign: 'center', marginBottom: '20px', fontWeight: 'bold', color: '#2c3e50', fontSize: '14px' }}>
-        Tasa BCV: <span style={{ color: '#28a745' }}>{tasa ? `${tasa.toFixed(2)} Bs/$` : '...'}</span>
+        {/* AQUI CAMBIAMOS A toFixed(4) PARA MOSTRAR 4 DECIMALES */}
+        Tasa BCV: <span style={{ color: '#28a745' }}>{tasa ? `${tasa.toFixed(4)} Bs/$` : '...'}</span>
         {!editandoTasa ? (
           <button onClick={() => setEditandoTasa(true)} style={{ marginLeft: '10px', padding: '5px', fontSize: '12px', cursor: 'pointer', borderRadius: '5px', border: '1px solid #ccc' }}>✏️</button>
         ) : (
           <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '5px' }}>
-            <input type="number" value={tasaManualInput} onChange={e => setTasaManualInput(e.target.value)} style={{ padding: '5px', width: '80px', borderRadius: '5px', border: '1px solid #ccc' }} />
+            <input type="number" step="0.0001" value={tasaManualInput} onChange={e => setTasaManualInput(e.target.value)} style={{ padding: '5px', width: '100px', borderRadius: '5px', border: '1px solid #ccc' }} />
             <button onClick={guardarTasaManual} style={{ padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px' }}>OK</button>
             <button onClick={() => setEditandoTasa(false)} style={{ padding: '5px 10px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px' }}>X</button>
           </div>
