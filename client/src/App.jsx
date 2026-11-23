@@ -31,7 +31,7 @@ function App() {
 
   const consultar = async () => {
     try {
-      const res = await fetch(API_URL);
+    |   const res = await fetch(API_URL);
       const data = await res.json();
       setProductos(data);
     } catch (error) { setMensaje('Error al consultar.'); }
@@ -91,12 +91,11 @@ function App() {
     } catch (error) { setMensaje('Error al cargar.'); }
   };
 
-  // --- CORRECCIÓN AQUÍ ---
   const handleCodigoVentaChange = (e) => {
     const codigo = e.target.value;
     const prod = productos.find(p => p.Codigo === codigo);
     if (prod) {
-      // Nos aseguramos de que el precio se guarde como string limpio
+      // Forzamos que el precio se llene aquí
       setProductoActual({ codigo, cantidad: '', precio: prod.Venta ? prod.Venta.toString() : '' });
     } else {
       setProductoActual({ codigo, cantidad: '', precio: '' });
@@ -171,11 +170,11 @@ function App() {
     doc.text(`Total ($): $${formatoMoneda(reporte.granTotalUSD)}`, 14, 29);
     doc.text(`Total (Bs): Bs. ${formatoMoneda(reporte.granTotalBS)}`, 14, 36);
 
-    const pagosData = Object.entries(reporte.desglosePagos).map(([metodo, montos]) => [
-      metodo, `$${formatoMoneda(montos.usd)}`, `Bs. ${formatoMoneda(montos.bs)}`
+    const pagosData = Object.entries(reporte.desglosePagos).map(([metodo, datos]) => [
+      metodo, datos.transacciones.toString(), `$${formatoMoneda(datos.usd)}`, `Bs. ${formatoMoneda(datos.bs)}`
     ]);
 
-    autoTable(doc, { startY: 45, head: [['Método de Pago', 'Monto ($)', 'Monto (Bs)']], body: pagosData, theme: 'grid' });
+    autoTable(doc, { startY: 45, head: [['Método de Pago', 'Transacciones', 'Monto ($)', 'Monto (Bs)']], body: pagosData, theme: 'grid' });
 
     const ventasData = reporte.ventas.map(v => [
       v.Fecha.split(', ')[1], v.Codigo, v.Cantidad, `$${formatoMoneda(v.TotalUSD)}`
@@ -275,12 +274,13 @@ function App() {
             <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
               <input placeholder="Código" value={productoActual.codigo} onChange={handleCodigoVentaChange} style={{flex: 2, padding: '8px', minWidth: '100px'}} />
               <input placeholder="Cant." type="number" value={productoActual.cantidad} onChange={e => setProductoActual({...productoActual, cantidad: e.target.value})} style={{flex: 1, padding: '8px', minWidth: '60px'}} />
-              <input placeholder="Precio $" type="number" value={productoActual.precio} onChange={e => setProductoActual({...productoActual, precio: e.target.value})} style={{flex: 1, padding: '8px', minWidth: '80px'}} />
+              <input placeholder="Precio $" type="number" value={productoActual.precio} onChange={e => setProductoActual({...productoActual, precio: e.target.value})} style={{flex: 1, padding: '8px', minWidth: '80px', border: productoActual.precio ? '2px solid #28a745' : '2px solid #dc3545'}} />
               <button onClick={agregarAlCarrito} style={{ padding: '8px 15px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
             </div>
             {productoActual.codigo && (
                <p style={{margin: '5px 0 0 0', fontSize: '12px', color: '#666'}}>
-                 {productos.find(p => p.Codigo === productoActual.codigo)?.Nombre || 'Producto no encontrado'}
+                 <strong>{productos.find(p => p.Codigo === productoActual.codigo)?.Nombre}</strong> 
+                 {productos.find(p => p.Codigo === productoActual.codigo)?.Venta && ` (Precio ref: $${productos.find(p => p.Codigo === productoActual.codigo)?.Venta})`}
                </p>
             )}
           </div>
@@ -360,16 +360,22 @@ function App() {
               </div>
               <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto', marginBottom: '20px' }}>
                 <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Pagos Recibidos</h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '300px' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '350px' }}>
                   <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
-                    <tr><th style={{ textAlign: 'left', padding: '10px' }}>Método</th><th style={{ textAlign: 'right', padding: '10px' }}>Monto ($)</th><th style={{ textAlign: 'right', padding: '10px' }}>Monto (Bs)</th></tr>
+                    <tr>
+                      <th style={{ textAlign: 'left', padding: '10px' }}>Método</th>
+                      <th style={{ textAlign: 'center', padding: '10px' }}>Transacciones</th>
+                      <th style={{ textAlign: 'right', padding: '10px' }}>Monto ($)</th>
+                      <th style={{ textAlign: 'right', padding: '10px' }}>Monto (Bs)</th>
+                    </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(reporte.desglosePagos).map(([metodo, montos], i) => (
+                    {Object.entries(reporte.desglosePagos).map(([metodo, datos], i) => (
                       <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
                         <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{metodo}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(montos.usd)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', color: '#28a745', padding: '10px' }}>Bs. {formatoMoneda(montos.bs)}</td>
+                        <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px', padding: '10px', backgroundColor: '#f1f1f1' }}>{datos.transacciones}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(datos.usd)}</td>
+                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', color: '#28a745', padding: '10px' }}>Bs. {formatoMoneda(datos.bs)}</td>
                       </tr>
                     ))}
                   </tbody>

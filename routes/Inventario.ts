@@ -55,7 +55,6 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
   } catch (error: any) { console.error('Error historial:', error); }
 };
 
-// --- RUTA DE CONSULTA CORREGIDA ---
 router.get('/', async (req, res) => {
   try {
     const sheet = await getSheet('Inventario');
@@ -67,15 +66,11 @@ router.get('/', async (req, res) => {
       Marca: row.get('MARCA') || '',
       Estante: row.get('ESTANTE') || '',
       Costo: row.get('COSTO') || '0',
-      // IMPORTANTE: Leemos 'VENTA' y nos aseguramos que sea texto
-      Venta: row.get('VENTA') ? row.get('VENTA').toString() : '0',
+      Venta: row.get('VENTA') ? row.get('VENTA').toString().trim() : '0',
       Existencia: row.get('EXISTENCIA') || '0'
     }));
     res.json(data);
-  } catch (error) { 
-    console.error(error);
-    res.status(500).json({ error: 'Error al leer inventario' }); 
-  }
+  } catch (error) { res.status(500).json({ error: 'Error al leer inventario' }); }
 });
 
 router.post('/cargar', async (req, res) => {
@@ -179,12 +174,12 @@ router.post('/tasa-manual', async (req, res) => {
       
       res.json({ message: 'Tasa guardada', tasa: tasaNumerica });
     } catch (error) {
-      console.error(error);
       res.status(500).json({ error: 'Error al guardar en Sheets' });
     }
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
 });
 
+// --- REPORTE CON CONTADOR DE TRANSACCIONES ---
 router.get('/reporte-hoy', async (req, res) => {
   try {
     const sheetHistorial = await getSheet('Historial');
@@ -205,16 +200,21 @@ router.get('/reporte-hoy', async (req, res) => {
     const granTotalUSD = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalUSD, 0);
     const granTotalBS = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalBS, 0);
 
-    const metodosMap: { [key: string]: { usd: number, bs: number } } = {};
+    // Objeto para agrupar los pagos, contando cuántas transacciones hay
+    const metodosMap: { [key: string]: { transacciones: number, usd: number, bs: number } } = {};
     const tasaHoy = await obtenerTasaBCV();
 
     ventasHoy.forEach((venta: any) => {
+      // Separamos el string de pagos (ej: "Cashea: $10.00 | PM Persona: $5.00")
       const pagosArray = venta.Pago.split(' | ');
       pagosArray.forEach((pagoStr: string) => {
         const [metodo, montoStr] = pagoStr.split(': $');
         if (metodo && montoStr) {
           const montoUSD = parseFloat(montoStr.replace(',', '.'));
-          if (!metodosMap[metodo]) metodosMap[metodo] = { usd: 0, bs: 0 };
+          // Si el método no existe en el mapa, lo creamos con 0
+          if (!metodosMap[metodo]) metodosMap[metodo] = { transacciones: 0, usd: 0, bs: 0 };
+          
+          metodosMap[metodo].transacciones += 1; // Sumamos 1 a la cantidad de veces que se usó
           metodosMap[metodo].usd += montoUSD;
           metodosMap[metodo].bs += (montoUSD * tasaHoy);
         }
