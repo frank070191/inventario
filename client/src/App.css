@@ -1,3 +1,147 @@
+/* Estilos generales de la página */
+body {
+  background-color: #f4f7f6;
+  color: #333;
+  margin: 0;
+  padding: 0;
+}
+
+.container {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 20px;
+}
+
+h1 {
+  text-align: center;
+  color: #2c3e50;
+  margin-bottom: 30px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+/* Contenedor de los botones del menú */
+.menu-botones {
+  display: flex;
+  gap: 15px;
+  margin-bottom: 30px;
+  justify-content: center;
+  flex-wrap: wrap;
+}
+
+/* Magia para los botones 3D */
+.btn-3d {
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: bold;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.1s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.btn-3d:active {
+  transform: translateY(4px); /* Efecto de presionar el botón */
+  box-shadow: none !important;
+}
+
+.btn-blue { background-color: #007bff; box-shadow: 0 6px 0 #0056b3; }
+.btn-green { background-color: #28a745; box-shadow: 0 6px 0 #1e7e34; }
+.btn-red { background-color: #dc3545; box-shadow: 0 6px 0 #a71d2a; }
+.btn-purple { background-color: #6f42c1; box-shadow: 0 6px 0 #4e2a8e; }
+
+/* Estilos de la tabla */
+.tabla-contenedor {
+  background: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  overflow-x: auto; /* Para que la tabla se pueda deslizar en el celular */
+  margin-top: 20px;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 500px; /* Asegura un ancho mínimo para que no se aplaste en móvil */
+}
+
+thead {
+  background-color: #2c3e50;
+  color: white;
+}
+
+th, td {
+  padding: 15px;
+  border-bottom: 1px solid #eee;
+}
+
+/* Alinear precios a la derecha */
+.texto-derecha {
+  text-align: right;
+}
+
+/* Centrar las existencias y códigos */
+.texto-centro {
+  text-align: center;
+}
+
+tbody tr:hover {
+  background-color: #f1f1f1; /* Efecto al pasar el ratón */
+}
+
+/* Estilos de los formularios */
+.formulario {
+  background: white;
+  padding: 30px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+  max-width: 500px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.formulario input, .formulario select {
+  padding: 12px;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  font-size: 15px;
+  outline: none;
+  transition: border 0.3s;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.formulario input:focus, .formulario select:focus {
+  border-color: #007bff;
+}
+
+.caja-info {
+  background-color: #e9ecef;
+  padding: 15px;
+  border-radius: 8px;
+  border-left: 5px solid #007bff;
+}
+
+.caja-info p {
+  margin: 5px 0;
+}
+
+.mensaje-alerta {
+  background-color: #d1ecf1;
+  color: #0c5460;
+  padding: 15px;
+  border-radius: 8px;
+  text-align: center;
+  font-weight: bold;
+  margin-bottom: 20px;
+}
+
 /* --- DISEÑO RESPONSIVE PARA MÓVILES --- */
 @media (max-width: 600px) {
   .container {
@@ -10,14 +154,13 @@
   }
 
   .menu-botones {
-    flex-wrap: wrap; /* Permite que los botones bajen de línea */
     gap: 8px;
   }
 
   .btn-3d {
     padding: 10px 15px;
     font-size: 14px;
-    flex: 1; /* Hace que los botones ocupen el ancho disponible */
+    flex: 1; 
     min-width: 45%; /* Dos botones por fila */
   }
 
@@ -25,12 +168,8 @@
     padding: 15px;
   }
 
-  .tabla-contenedor {
-    overflow-x: auto; /* Permite hacer scroll horizontal en la tabla si es muy ancha */
-  }
-
   th, td {
-    padding: 8px 5px; /* Reduce el espacio en las celdas */
+    padding: 8px 5px;
     font-size: 12px;
   }
 }

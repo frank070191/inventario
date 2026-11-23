@@ -19,7 +19,6 @@ function App() {
   const [infoVenta, setInfoVenta] = useState(null);
   const [pagos, setPagos] = useState([{ metodo: METODOS_PAGO[0], monto: '' }]);
 
-  // Estados para el reporte
   const [reporte, setReporte] = useState(null);
 
   const consultar = async () => {
@@ -56,14 +55,12 @@ function App() {
       if (res.ok) {
         setTasa(data.tasa);
         setEditandoTasa(false);
-        setMensaje(`Tasa actualizada manualmente a ${data.tasa} Bs/$`);
+        setMensaje(`Tasa actualizada a ${data.tasa} Bs/$`);
       }
     } catch (error) { setMensaje('Error al guardar tasa'); }
   };
 
   useEffect(() => { consultar(); obtenerTasa(); }, []);
-
-  // Al cambiar a la vista de reporte, generamos los datos
   useEffect(() => { if (vista === 'reporte') generarReporte(); }, [vista]);
 
   const handleCodigoCargaChange = (e) => {
@@ -141,12 +138,12 @@ function App() {
         )}
       </div>
 
-      {/* MENÚ DE BOTONES (Se apilan en móvil gracias al CSS) */}
+      {/* MENÚ CON CLASES 3D RECUPERADAS */}
       <div className="menu-botones">
         <button onClick={() => setVista('consultar')} className="btn-3d btn-blue">Consultar</button>
         <button onClick={() => setVista('cargar')} className="btn-3d btn-green">Cargar</button>
         <button onClick={() => setVista('vender')} className="btn-3d btn-red">Vender</button>
-        <button onClick={() => setVista('reporte')} className="btn-3d btn-purple" style={{backgroundColor: '#6f42c1', boxShadow: '0 6px 0 #4e2a8e'}}>Reporte</button>
+        <button onClick={() => setVista('reporte')} className="btn-3d btn-purple">Reporte</button>
       </div>
 
       {mensaje && <div className="mensaje-alerta">{mensaje}</div>}
@@ -261,33 +258,35 @@ function App() {
             <>
               <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
                 <div className="caja-info" style={{ textAlign: 'center', flex: 1, minWidth: '150px' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Ventas ($)</p>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total ($)</p>
                   <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>${reporte.granTotalUSD.toFixed(2)}</p>
                 </div>
                 <div className="caja-info" style={{ textAlign: 'center', flex: 1, minWidth: '150px' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Ventas (Bs)</p>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total (Bs)</p>
                   <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>Bs. {reporte.granTotalBS.toFixed(2)}</p>
                 </div>
               </div>
 
               <div className="tabla-contenedor" style={{ marginBottom: '20px' }}>
-                <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Desglose por Método de Pago</h3>
+                <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Pagos Recibidos</h3>
                 <table>
                   <thead>
                     <tr>
                       <th style={{ textAlign: 'left' }}>Método</th>
                       <th className="texto-derecha">Monto ($)</th>
+                      <th className="texto-derecha">Monto (Bs)</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(reporte.desglosePagos).map(([metodo, monto], i) => (
+                    {Object.entries(reporte.desglosePagos).map(([metodo, montos]: [string, any], i) => (
                       <tr key={i}>
-                        <td style={{ textAlign: 'left', fontSize: '13px' }}>{metodo}</td>
-                        <td className="texto-derecha" style={{ fontWeight: 'bold', fontSize: '13px' }}>${monto.toFixed(2)}</td>
+                        <td style={{ textAlign: 'left', fontSize: '12px' }}>{metodo}</td>
+                        <td className="texto-derecha" style={{ fontWeight: 'bold', fontSize: '12px' }}>${montos.usd.toFixed(2)}</td>
+                        <td className="texto-derecha" style={{ fontWeight: 'bold', fontSize: '12px', color: '#28a745' }}>Bs. {montos.bs.toFixed(2)}</td>
                       </tr>
                     ))}
                     {Object.keys(reporte.desglosePagos).length === 0 && (
-                      <tr><td colSpan="2" style={{textAlign: 'center'}}>No hay ventas registradas hoy.</td></tr>
+                      <tr><td colSpan="3" style={{textAlign: 'center'}}>No hay ventas registradas hoy.</td></tr>
                     )}
                   </tbody>
                 </table>

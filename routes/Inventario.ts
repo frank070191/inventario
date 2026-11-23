@@ -3,11 +3,25 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// Variable en memoria para guardar la tasa manual
-let tasaManualGlobal: number | null = null;
+// Obtener la tasa manual guardada en Google Sheets (si existe)
+const obtenerTasaManualGuardada = async () => {
+  try {
+    const sheetConfig = await getSheet('Configuracion');
+    const rows = await sheetConfig.getRows();
+    if (rows.length > 0) {
+      const val = rows[0].get('TasaManual');
+      return val ? parseFloat(val) : null;
+    }
+    return null;
+  } catch (error) {
+    return null;
+  }
+};
 
 const obtenerTasaBCV = async () => {
-  if (tasaManualGlobal && tasaManualGlobal > 0) return tasaManualGlobal;
+  // Primero revisamos si hay una tasa guardada en la hoja
+  const tasaGuardada = await obtenerTasaManualGuardada();
+  if (tasaGuardada && tasaGuardada > 0) return tasaGuardada;
 
   try {
     const res = await fetch('https://www.bcv.org.ve/', {
@@ -117,26 +131,38 @@ router.post('/vender', async (req, res) => {
 
 router.get('/tasa', async (req, res) => { res.json({ tasa: await obtenerTasaBCV() }); });
 
-router.post('/tasa-manual', (req, res) => {
+// Guardar la tasa manual en Google Sheets permanentemente
+router.post('/tasa-manual', async (req, res) => {
   const { nuevaTasa } = req.body;
   if (nuevaTasa && !isNaN(nuevaTasa) && nuevaTasa > 0) {
-    tasaManualGlobal = parseFloat(nuevaTasa);
-    res.json({ message: 'Tasa actualizada', tasa: tasaManualGlobal });
+    try {
+      const sheetConfig = await getSheet('Configuracion');
+      const rows = await sheetConfig.getRows();
+      const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" });
+      
+      if (rows.length > 0) {
+        rows[0].set('TasaManual', nuevaTasa.toString());
+        rows[0].set('Fecha', fecha);
+        await rows[0].save();
+      } else {
+        await sheetConfig.addRow({ TasaManual: nuevaTasa.toString(), Fecha: fecha });
+      }
+      res.json({ message: 'Tasa guardada permanentemente', tasa: nuevaTasa });
+    } catch (error) {
+      res.status(500).json({ error: 'Error al guardar en Sheets' });
+    }
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
 });
 
-// 6. NUEVA RUTA: REPORTE DE VENTAS DEL DÍA (CON TIPOS AGREGADOS)
+// REPORTE DE VENTAS DEL DÍA (Desglose con montos en Bs)
 router.get('/reporte-hoy', async (req, res) => {
   try {
     const sheetHistorial = await getSheet('Historial');
     const rows = await sheetHistorial.getRows();
-    
     const hoy = new Date().toLocaleDateString("es-VE", { timeZone: "America/Caracas" });
     
     const ventasHoy = rows.filter((row: any) => {
-      const fechaFila = row.get('Fecha') || '';
-      const tipo = row.get('Tipo') || '';
-      return tipo === 'Venta' && fechaFila.startsWith(hoy);
+      return (row.get('Tipo') || '') === 'Venta' && (row.get('Fecha') || '').startsWith(hoy);
     }).map((row: any) => ({
       Fecha: row.get('Fecha'),
       Codigo: row.get('Codigo'),
@@ -146,19 +172,24 @@ router.get('/reporte-hoy', async (req, res) => {
       TotalBS: parseFloat(row.get('TotalBS') || '0')
     }));
 
-    // Aquí agregamos :any a acc y v
     const granTotalUSD = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalUSD, 0);
     const granTotalBS = ventasHoy.reduce((acc: any, v: any) => acc + v.TotalBS, 0);
 
-    const metodosMap: { [key: string]: number } = {};
-    // Aquí agregamos :any a venta
+    // Desglose por método de pago (Monto en $ y su equivalente en Bs)
+    const metodosMap: { [key: string]: { usd: number, bs: number } } = {};
+    
+    // Usamos la tasa del día para calcular el Bs de los pagos (asumiendo que la tasa se mantuvo igual)
+    const tasaHoy = await obtenerTasaBCV();
+
     ventasHoy.forEach((venta: any) => {
       const pagosArray = venta.Pago.split(' | ');
       pagosArray.forEach((pagoStr: string) => {
         const [metodo, montoStr] = pagoStr.split(': $');
         if (metodo && montoStr) {
-          const monto = parseFloat(montoStr);
-          metodosMap[metodo] = (metodosMap[metodo] || 0) + monto;
+          const montoUSD = parseFloat(montoStr);
+          if (!metodosMap[metodo]) metodosMap[metodo] = { usd: 0, bs: 0 };
+          metodosMap[metodo].usd += montoUSD;
+          metodosMap[metodo].bs += (montoUSD * tasaHoy); // Calculamos el Bs
         }
       });
     });
@@ -170,7 +201,6 @@ router.get('/reporte-hoy', async (req, res) => {
       desglosePagos: metodosMap
     });
   } catch (error) {
-    console.error('Error al generar reporte:', error);
     res.status(500).json({ error: 'Error al generar el reporte' });
   }
 });
