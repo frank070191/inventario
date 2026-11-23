@@ -3,13 +3,14 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// Obtener tasa BCV directamente del portal oficial (con fallback a AllRatesToday)
+// Obtener tasa BCV directamente del portal oficial
 const obtenerTasaBCV = async () => {
   try {
-    // 1. Intentamos leer directamente la página del BCV
     const res = await fetch('https://www.bcv.org.ve/', {
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8'
       }
     });
     
@@ -17,27 +18,35 @@ const obtenerTasaBCV = async () => {
     
     const html = await res.text();
     
-    // 2. Buscamos el valor del dólar dentro del HTML
-    const match = html.match(/id="dolar"[\s\S]*?<strong>\s*([\d.,]+)\s*<\/strong>/);
+    // Buscamos el bloque del dólar y extraemos el número
+    const match = html.match(/<div[^>]*id="dolar"[^>]*>[\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>/);
     
     if (match && match[1]) {
-      // 3. Limpiamos el formato venezolano (ej. 919,8227 -> 919.8227)
+      // Limpiamos el formato: 919,8227 -> 919.8227
       const tasaStr = match[1].replace(/\./g, '').replace(',', '.');
       const tasa = parseFloat(tasaStr);
-      console.log(`✅ Tasa BCV oficial obtenida: ${tasa}`);
-      return tasa;
+      
+      if (tasa > 100 && tasa < 2000) {
+        console.log(`✅ Tasa BCV oficial obtenida: ${tasa}`);
+        return tasa;
+      }
     }
-    throw new Error('No se pudo encontrar el valor en el HTML del BCV');
+    
+    throw new Error('No se pudo extraer el valor del HTML del BCV');
     
   } catch (error) {
     console.error('⚠️ Error obteniendo tasa del BCV directo:', error);
     
-    // 4. Respaldo: Si el BCV falla, usamos AllRatesToday
+    // Respaldo: API de AllRatesToday si el BCV falla
     try {
-      console.log('Intentando con API de respaldo (AllRatesToday)...');
+      console.log('Intentando con API de respaldo...');
       const resFallback = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
       const data = await resFallback.json();
-      return data.rate || 0;
+      if (data && data.rate) {
+        console.log(`Tasa de respaldo obtenida: ${data.rate}`);
+        return data.rate;
+      }
+      return 0;
     } catch (fallbackError) {
       console.error('❌ Error en API de respaldo:', fallbackError);
       return 0;
