@@ -7,7 +7,7 @@ const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario';
 const METODOS_PAGO = ["T. Débito Bancamiga", "T. Crédito Banca", "PM Empresa", "PM Persona", "Biopago", "Transf Vzla", "Transf. Bancamiga", "T. Débito BNC", "T. Crédito BNC", "Cashea"];
 
 const formatoMoneda = (numero) => {
-  if (isNaN(numero) || numero === null) return '0,00';
+  if (isNaN(numero) || numero === null || numero === undefined) return '0,00';
   return new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(numero);
 };
 
@@ -23,14 +23,12 @@ function App() {
 
   const [carga, setCarga] = useState({ codigo: '', proveedor: '', nombre: '', marca: '', estante: '', costo: '', venta: '', cantidad: '' });
   
-  // Lógica del Carrito de Ventas
   const [carrito, setCarrito] = useState([]);
   const [productoActual, setProductoActual] = useState({ codigo: '', cantidad: '', precio: '' });
   const [pagos, setPagos] = useState([{ metodo: METODOS_PAGO[0], monto: '' }]);
 
   const [reporte, setReporte] = useState(null);
 
-  // ... (funciones consultar, obtenerTasa, generarReporte, guardarTasaManual iguales que antes) ...
   const consultar = async () => {
     try {
       const res = await fetch(API_URL);
@@ -72,7 +70,6 @@ function App() {
   useEffect(() => { consultar(); obtenerTasa(); }, []);
   useEffect(() => { if (vista === 'reporte') generarReporte(); }, [vista]);
 
-  // ... (Funciones de carga iguales) ...
   const handleCodigoCargaChange = (e) => {
     const codigo = e.target.value;
     const prod = productos.find(p => p.Codigo === codigo);
@@ -94,11 +91,12 @@ function App() {
     } catch (error) { setMensaje('Error al cargar.'); }
   };
 
-  // --- LÓGICA DEL CARRITO ---
+  // --- LÓGICA DEL CARRITO Y AUTOCOMPLETADO DE PRECIO ---
   const handleCodigoVentaChange = (e) => {
     const codigo = e.target.value;
     const prod = productos.find(p => p.Codigo === codigo);
     if (prod) {
+      // Aquí llenamos el precio automáticamente con el valor de la hoja
       setProductoActual({ codigo, cantidad: '', precio: prod.Venta || '' });
     } else {
       setProductoActual({ codigo, cantidad: '', precio: '' });
@@ -115,11 +113,12 @@ function App() {
       return setMensaje(`Solo hay ${prodInfo.Existencia} unidades de ${prodInfo.Nombre}.`);
     }
 
-    // Verificar si ya está en el carrito para sumar cantidad
     const existeIndex = carrito.findIndex(item => item.codigo === productoActual.codigo);
     if (existeIndex >= 0) {
       const nuevoCarrito = [...carrito];
       nuevoCarrito[existeIndex].cantidad = (parseInt(nuevoCarrito[existeIndex].cantidad) + parseInt(productoActual.cantidad)).toString();
+      // Actualizamos también el precio por si lo cambiaron
+      nuevoCarrito[existeIndex].precio = productoActual.precio;
       setCarrito(nuevoCarrito);
     } else {
       setCarrito([...carrito, { 
@@ -138,7 +137,6 @@ function App() {
     setCarrito(nuevoCarrito);
   };
 
-  // --- PAGOS Y TOTALES ---
   const agregarPago = () => setPagos([...pagos, { metodo: METODOS_PAGO[0], monto: '' }]);
   const eliminarPago = (index) => { if (pagos.length > 1) setPagos(pagos.filter((_, i) => i !== index)); };
   const actualizarPago = (index, campo, valor) => { const nuevosPagos = [...pagos]; nuevosPagos[index][campo] = valor; setPagos(nuevosPagos); };
@@ -189,14 +187,12 @@ function App() {
     doc.save(`Reporte_Ventas_${new Date().toISOString().slice(0,10)}.pdf`);
   };
 
-  // Cálculos del carrito
   const totalVentaActual = carrito.reduce((acc, item) => acc + (parseFloat(item.precio) * parseInt(item.cantidad)), 0);
   const totalPagado = pagos.reduce((acc, pago) => acc + (parseFloat(pago.monto) || 0), 0);
   const restante = totalVentaActual - totalPagado;
 
   const productosFiltrados = productos.filter(p => p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase()));
 
-  // Estilos (iguales a antes)
   const styleBtnBase = { padding: '12px 24px', fontSize: '16px', fontWeight: 'bold', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1, minWidth: '45%', marginBottom: '5px' };
   const styleBtnBlue = { ...styleBtnBase, backgroundColor: '#007bff', boxShadow: '0 6px 0 #0056b3' };
   const styleBtnGreen = { ...styleBtnBase, backgroundColor: '#28a745', boxShadow: '0 6px 0 #1e7e34' };
@@ -229,7 +225,7 @@ function App() {
 
       {mensaje && <div style={{ backgroundColor: '#d1ecf1', color: '#0c5460', padding: '15px', borderRadius: '8px', textAlign: 'center', fontWeight: 'bold', marginBottom: '20px' }}>{mensaje}</div>}
 
-      {vista === 'consultar' && ( /* ... Tabla de consulta ... */
+      {vista === 'consultar' && (
         <div>
           <input type="text" placeholder="🔍 Buscar producto..." value={busqueda} onChange={e => setBusqueda(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box' }}/>
           <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
@@ -244,6 +240,7 @@ function App() {
                     <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>{p.Nombre}</td>
                     <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{p.Marca}</td>
                     <td style={{ textAlign: 'center', fontSize: '12px', padding: '10px' }}>{p.Estante}</td>
+                    {/* AQUÍ LEEMOS EL PRECIO CORRECTAMENTE (p.Venta) */}
                     <td style={{ textAlign: 'right', color: '#28a745', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(p.Venta)}</td>
                     <td style={{ textAlign: 'center', fontSize: '12px', padding: '10px' }}>{p.Existencia}</td>
                   </tr>
@@ -254,7 +251,7 @@ function App() {
         </div>
       )}
 
-      {vista === 'cargar' && ( /* ... Formulario de carga ... */
+      {vista === 'cargar' && (
         <form onSubmit={cargarProducto} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', maxWidth: '500px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <h2 style={{textAlign: 'center', color: '#2c3e50'}}>Ingresar Mercancía</h2>
           <input placeholder="Código" value={carga.codigo} onChange={handleCodigoCargaChange} required style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
@@ -275,7 +272,6 @@ function App() {
         <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', maxWidth: '600px', margin: '0 auto' }}>
           <h2 style={{textAlign: 'center', color: '#2c3e50', marginTop: 0}}>Registrar Venta</h2>
           
-          {/* Formulario para agregar al carrito */}
           <div style={{ padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
             <h4 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>Añadir Producto</h4>
             <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
@@ -291,7 +287,6 @@ function App() {
             )}
           </div>
 
-          {/* Tabla del Carrito */}
           <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
               <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
@@ -312,7 +307,6 @@ function App() {
             </table>
           </div>
 
-          {/* Pagos */}
           <div style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
             <h4 style={{ margin: '0 0 10px 0', textAlign: 'center', color: '#2c3e50' }}>Pagos</h4>
             {pagos.map((pago, index) => (
@@ -331,7 +325,6 @@ function App() {
             </button>
           </div>
 
-          {/* Totales */}
           {totalVentaActual > 0 && (
             <div style={{ textAlign: 'center', marginTop: '20px', padding: '15px', backgroundColor: '#e9ecef', borderRadius: '8px' }}>
               <p style={{ margin: '5px 0', fontWeight: 'bold', color: '#2c3e50', fontSize: '18px' }}>
@@ -349,7 +342,7 @@ function App() {
         </div>
       )}
 
-      {vista === 'reporte' && ( /* ... Tabla del reporte igual que antes ... */
+      {vista === 'reporte' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{color: '#2c3e50', margin: 0}}>Reporte de Ventas de Hoy</h2>
