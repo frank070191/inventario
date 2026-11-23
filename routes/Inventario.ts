@@ -3,8 +3,16 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// Obtener tasa BCV directamente del portal oficial
+// Variable en memoria para guardar la tasa (por defecto busca la del BCV)
+let tasaManualGlobal: number | null = null;
+
+// Obtener tasa BCV (automática)
 const obtenerTasaBCV = async () => {
+  // Si el usuario ya ingresó una tasa manual, usamos esa
+  if (tasaManualGlobal && tasaManualGlobal > 0) {
+    return tasaManualGlobal;
+  }
+
   try {
     const res = await fetch('https://www.bcv.org.ve/', {
       headers: {
@@ -17,77 +25,50 @@ const obtenerTasaBCV = async () => {
     if (!res.ok) throw new Error('Error al conectar con el BCV');
     
     const html = await res.text();
-    
-    // Buscamos el bloque del dólar y extraemos el número
     const match = html.match(/<div[^>]*id="dolar"[^>]*>[\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>/);
     
     if (match && match[1]) {
-      // Limpiamos el formato: 919,8227 -> 919.8227
       const tasaStr = match[1].replace(/\./g, '').replace(',', '.');
       const tasa = parseFloat(tasaStr);
-      
       if (tasa > 100 && tasa < 2000) {
-        console.log(`✅ Tasa BCV oficial obtenida: ${tasa}`);
+        console.log(`✅ Tasa BCV automática obtenida: ${tasa}`);
         return tasa;
       }
     }
-    
-    throw new Error('No se pudo extraer el valor del HTML del BCV');
+    throw new Error('No se pudo extraer el valor');
     
   } catch (error) {
-    console.error('⚠️ Error obteniendo tasa del BCV directo:', error);
-    
-    // Respaldo: API de AllRatesToday si el BCV falla
+    console.error('⚠️ Error obteniendo tasa del BCV directo. Usando respaldo...');
     try {
-      console.log('Intentando con API de respaldo...');
       const resFallback = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
       const data = await resFallback.json();
-      if (data && data.rate) {
-        console.log(`Tasa de respaldo obtenida: ${data.rate}`);
-        return data.rate;
-      }
-      return 0;
+      return data.rate || 0;
     } catch (fallbackError) {
-      console.error('❌ Error en API de respaldo:', fallbackError);
       return 0;
     }
   }
 };
 
-// Guardar en la hoja Historial con el resumen de pagos
 const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, pagoResumen: string, tasa: number, totalUSD: number, totalBS: number) => {
   try {
     const sheetHistorial = await getSheet('Historial');
     const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" }); 
     await sheetHistorial.addRow({
-      Fecha: fecha,
-      Tipo: tipo,
-      Codigo: codigo,
-      Cantidad: cantidad,
-      Pago: pagoResumen,
-      Tasa: tasa,
-      TotalUSD: totalUSD,
-      TotalBS: totalBS
+      Fecha: fecha, Tipo: tipo, Codigo: codigo, Cantidad: cantidad, Pago: pagoResumen, Tasa: tasa, TotalUSD: totalUSD, TotalBS: totalBS
     });
   } catch (error: any) {
     console.error('Error al guardar en historial:', error);
   }
 };
 
-// 1. CONSULTAR TODO EL INVENTARIO
 router.get('/', async (req, res) => {
   try {
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
     const data = rows.map((row: any) => ({
-      Codigo: row.get('CODIGO'),
-      Proveedor: row.get('PROVEEDOR') || '',
-      Nombre: row.get('NOMBRE'),
-      Marca: row.get('MARCA') || '',
-      Estante: row.get('ESTANTE') || '',
-      Costo: row.get('COSTO'),
-      Venta: row.get('VENTA'),
-      Existencia: row.get('EXISTENCIA')
+      Codigo: row.get('CODIGO'), Proveedor: row.get('PROVEEDOR') || '', Nombre: row.get('NOMBRE'),
+      Marca: row.get('MARCA') || '', Estante: row.get('ESTANTE') || '', Costo: row.get('COSTO'),
+      Venta: row.get('VENTA'), Existencia: row.get('EXISTENCIA')
     }));
     res.json(data);
   } catch (error) {
@@ -95,7 +76,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// 2. CARGAR MERCANCÍA
 router.post('/cargar', async (req, res) => {
   try {
     const { codigo, proveedor, nombre, marca, estante, costo, venta, cantidad } = req.body;
@@ -112,7 +92,6 @@ router.post('/cargar', async (req, res) => {
       if (nombre) producto.set('NOMBRE', nombre);
       if (marca) producto.set('MARCA', marca);
       if (estante) producto.set('ESTANTE', estante);
-      
       await producto.save();
       await guardarHistorial('Carga', codigo, cantidad, 'N/A', 0, 0, 0);
       res.json({ message: 'Stock actualizado correctamente', nuevaExistencia });
@@ -128,7 +107,6 @@ router.post('/cargar', async (req, res) => {
   }
 });
 
-// 3. VENDER
 router.post('/vender', async (req, res) => {
   try {
     const { codigo, cantidad, precioManual, pagos } = req.body; 
@@ -147,12 +125,9 @@ router.post('/vender', async (req, res) => {
 
     const precioVenta = parseFloat(precioManual) || parseFloat(producto.get('VENTA') || '0');
     const totalUSD = precioVenta * cantidadVender;
-    
-    // Obtenemos la tasa vigente
     const tasaBCV = await obtenerTasaBCV();
     const totalBS = totalUSD * tasaBCV;
 
-    // Creamos el resumen de pagos
     const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2)}`).join(' | ');
 
     producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
@@ -160,15 +135,8 @@ router.post('/vender', async (req, res) => {
     
     await guardarHistorial('Venta', codigo, cantidad, pagoResumen, tasaBCV, totalUSD, totalBS);
     
-    res.json({ 
-      message: 'Venta realizada con éxito', 
-      stockRestante: existenciaActual - cantidadVender, 
-      totalUSD, 
-      totalBS, 
-      tasaBCV 
-    });
+    res.json({ message: 'Venta realizada con éxito', stockRestante: existenciaActual - cantidadVender, totalUSD, totalBS, tasaBCV });
   } catch (error) {
-    console.error(error);
     res.status(500).json({ error: 'Error al procesar la venta' });
   }
 });
@@ -177,6 +145,18 @@ router.post('/vender', async (req, res) => {
 router.get('/tasa', async (req, res) => {
     const tasa = await obtenerTasaBCV();
     res.json({ tasa });
+});
+
+// 5. NUEVA RUTA: ACTUALIZAR TASA MANUAL
+router.post('/tasa-manual', (req, res) => {
+  const { nuevaTasa } = req.body;
+  if (nuevaTasa && !isNaN(nuevaTasa) && nuevaTasa > 0) {
+    tasaManualGlobal = parseFloat(nuevaTasa);
+    console.log(`⚠️ Tasa actualizada manualmente a: ${tasaManualGlobal}`);
+    res.json({ message: 'Tasa actualizada manualmente', tasa: tasaManualGlobal });
+  } else {
+    res.status(400).json({ error: 'Tasa inválida' });
+  }
 });
 
 export default router;

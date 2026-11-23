@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import './App.css';
 
-const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario';
+const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario'; // Asegúrate de que sea tu URL
 const METODOS_PAGO = ["T. Débito Bancamiga", "T. Crédito Banca", "PM Empresa", "PM Persona", "Biopago", "Transf Vzla", "Transf. Bancamiga", "T. Débito BNC", "T. Crédito BNC", "Cashea"];
 
 function App() {
@@ -9,10 +9,13 @@ function App() {
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState('');
   const [mensaje, setMensaje] = useState('');
+  
+  // Estados de Tasa
   const [tasa, setTasa] = useState(0);
+  const [editandoTasa, setEditandoTasa] = useState(false);
+  const [tasaManualInput, setTasaManualInput] = useState('');
 
   const [carga, setCarga] = useState({ codigo: '', proveedor: '', nombre: '', marca: '', estante: '', costo: '', venta: '', cantidad: '' });
-  
   const [venta, setVenta] = useState({ codigo: '', cantidad: '', precioManual: '' });
   const [infoVenta, setInfoVenta] = useState(null);
   const [pagos, setPagos] = useState([{ metodo: METODOS_PAGO[0], monto: '' }]);
@@ -30,7 +33,24 @@ function App() {
       const res = await fetch(`${API_URL}/tasa`);
       const data = await res.json();
       setTasa(data.tasa);
+      setTasaManualInput(data.tasa.toString()); // Sincronizar input
     } catch (error) { console.error('Error tasa'); }
+  };
+
+  const guardarTasaManual = async () => {
+    try {
+      const res = await fetch(`${API_URL}/tasa-manual`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ nuevaTasa: tasaManualInput })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setTasa(data.tasa);
+        setEditandoTasa(false);
+        setMensaje(`Tasa actualizada manualmente a ${data.tasa} Bs/$`);
+      }
+    } catch (error) { setMensaje('Error al guardar tasa'); }
   };
 
   useEffect(() => { consultar(); obtenerTasa(); }, []);
@@ -63,21 +83,9 @@ function App() {
     setInfoVenta(prod || null);
   };
 
-  // --- LÓGICA DE PAGOS ---
   const agregarPago = () => setPagos([...pagos, { metodo: METODOS_PAGO[0], monto: '' }]);
-  
-  const eliminarPago = (index) => {
-    if (pagos.length > 1) {
-      const nuevosPagos = pagos.filter((_, i) => i !== index);
-      setPagos(nuevosPagos);
-    }
-  };
-
-  const actualizarPago = (index, campo, valor) => {
-    const nuevosPagos = [...pagos];
-    nuevosPagos[index][campo] = valor;
-    setPagos(nuevosPagos);
-  };
+  const eliminarPago = (index) => { if (pagos.length > 1) setPagos(pagos.filter((_, i) => i !== index)); };
+  const actualizarPago = (index, campo, valor) => { const nuevosPagos = [...pagos]; nuevosPagos[index][campo] = valor; setPagos(nuevosPagos); };
 
   const venderProducto = async (e) => {
     e.preventDefault();
@@ -100,21 +108,35 @@ function App() {
 
   const productosFiltrados = productos.filter(p => p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase()));
 
-  // --- CÁLCULOS DE TOTALES Y RESTANTE ---
   const precioVentaActual = parseFloat(venta.precioManual) || parseFloat(infoVenta?.Venta || 0);
   const totalVentaActual = precioVentaActual * (parseInt(venta.cantidad) || 0);
-  
-  // Sumamos lo que se ha ingresado en los pagos
   const totalPagado = pagos.reduce((acc, pago) => acc + (parseFloat(pago.monto) || 0), 0);
-  // Calculamos el restante (si es negativo, es porque hay vuelto)
   const restante = totalVentaActual - totalPagado;
 
   return (
     <div className="container">
       <h1>Sistema de Inventario</h1>
       
+      {/* --- SECCIÓN DE LA TASA CON BOTÓN DE EDICIÓN --- */}
       <div style={{ textAlign: 'center', marginBottom: '20px', fontWeight: 'bold', color: '#2c3e50' }}>
         Tasa BCV del día: <span style={{ color: '#28a745' }}>{tasa ? `${tasa.toFixed(2)} Bs/$` : 'Cargando...'}</span>
+        
+        {!editandoTasa ? (
+          <button onClick={() => setEditandoTasa(true)} style={{ marginLeft: '15px', padding: '5px 10px', fontSize: '12px', cursor: 'pointer', borderRadius: '5px', border: '1px solid #ccc', backgroundColor: '#f8f9fa' }}>
+            ✏️ Editar Tasa
+          </button>
+        ) : (
+          <div style={{ marginTop: '10px' }}>
+            <input 
+              type="number" 
+              value={tasaManualInput} 
+              onChange={e => setTasaManualInput(e.target.value)} 
+              style={{ padding: '5px', width: '100px', borderRadius: '5px', border: '1px solid #ccc' }}
+            />
+            <button onClick={guardarTasaManual} style={{ marginLeft: '5px', padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Guardar</button>
+            <button onClick={() => setEditandoTasa(false)} style={{ marginLeft: '5px', padding: '5px 10px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer' }}>Cancelar</button>
+          </div>
+        )}
       </div>
 
       <div className="menu-botones">
@@ -209,7 +231,6 @@ function App() {
             </button>
           </div>
 
-          {/* --- SECCIÓN DE TOTALES Y RESTANTE --- */}
           {totalVentaActual > 0 && (
             <div style={{ textAlign: 'center', marginTop: '10px', padding: '10px', backgroundColor: '#e9ecef', borderRadius: '8px' }}>
               <p style={{ margin: '5px 0', fontWeight: 'bold', color: '#2c3e50' }}>
