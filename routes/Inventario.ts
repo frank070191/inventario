@@ -3,18 +3,24 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
+// Obtener tasa BCV con AllRatesToday (Tasa oficial vigente)
 const obtenerTasaBCV = async () => {
   try {
-    const res = await fetch('https://ve.dolarapi.com/v1/dolares/oficial');
+    const res = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
     const data = await res.json();
-    return data.promedio || 0; 
+    
+    if (data && data.rate) {
+      console.log(`Tasa BCV obtenida: ${data.rate} (Vigente desde: ${data.rate_date})`);
+      return data.rate;
+    }
+    return 0; 
   } catch (error) {
-    console.error('Error obteniendo tasa BCV:', error);
+    console.error('Error obteniendo tasa BCV desde AllRatesToday:', error);
     return 0;
   }
 };
 
-// Modificamos para recibir un texto con el resumen de los pagos
+// Guardar en la hoja Historial con el resumen de pagos
 const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, pagoResumen: string, tasa: number, totalUSD: number, totalBS: number) => {
   try {
     const sheetHistorial = await getSheet('Historial');
@@ -24,7 +30,7 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
       Tipo: tipo,
       Codigo: codigo,
       Cantidad: cantidad,
-      Pago: pagoResumen, // Aquí irá el resumen de todos los pagos
+      Pago: pagoResumen,
       Tasa: tasa,
       TotalUSD: totalUSD,
       TotalBS: totalBS
@@ -34,6 +40,7 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
   }
 };
 
+// 1. CONSULTAR TODO EL INVENTARIO
 router.get('/', async (req, res) => {
   try {
     const sheet = await getSheet('Inventario');
@@ -54,6 +61,7 @@ router.get('/', async (req, res) => {
   }
 });
 
+// 2. CARGAR MERCANCÍA
 router.post('/cargar', async (req, res) => {
   try {
     const { codigo, proveedor, nombre, marca, estante, costo, venta, cantidad } = req.body;
@@ -70,6 +78,7 @@ router.post('/cargar', async (req, res) => {
       if (nombre) producto.set('NOMBRE', nombre);
       if (marca) producto.set('MARCA', marca);
       if (estante) producto.set('ESTANTE', estante);
+      
       await producto.save();
       await guardarHistorial('Carga', codigo, cantidad, 'N/A', 0, 0, 0);
       res.json({ message: 'Stock actualizado correctamente', nuevaExistencia });
@@ -85,9 +94,10 @@ router.post('/cargar', async (req, res) => {
   }
 });
 
+// 3. VENDER
 router.post('/vender', async (req, res) => {
   try {
-    const { codigo, cantidad, precioManual, pagos } = req.body; // Ahora recibimos 'pagos' como lista
+    const { codigo, cantidad, precioManual, pagos } = req.body; 
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
     const producto = rows.find((row: any) => row.get('CODIGO') === codigo);
@@ -103,11 +113,12 @@ router.post('/vender', async (req, res) => {
 
     const precioVenta = parseFloat(precioManual) || parseFloat(producto.get('VENTA') || '0');
     const totalUSD = precioVenta * cantidadVender;
+    
+    // Obtenemos la tasa vigente (funciona para fines de semana también)
     const tasaBCV = await obtenerTasaBCV();
     const totalBS = totalUSD * tasaBCV;
 
-    // Creamos un resumen en texto de los pagos recibidos
-    // Ejemplo: "Biopago: $10.00 | PM Persona: $15.00"
+    // Creamos el resumen de pagos
     const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2)}`).join(' | ');
 
     producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
@@ -115,12 +126,20 @@ router.post('/vender', async (req, res) => {
     
     await guardarHistorial('Venta', codigo, cantidad, pagoResumen, tasaBCV, totalUSD, totalBS);
     
-    res.json({ message: 'Venta realizada con éxito', stockRestante: existenciaActual - cantidadVender, totalUSD, totalBS, tasaBCV });
+    res.json({ 
+      message: 'Venta realizada con éxito', 
+      stockRestante: existenciaActual - cantidadVender, 
+      totalUSD, 
+      totalBS, 
+      tasaBCV 
+    });
   } catch (error) {
+    console.error(error);
     res.status(500).json({ error: 'Error al procesar la venta' });
   }
 });
 
+// 4. OBTENER TASA DEL DÍA (Para mostrarla en el frontend)
 router.get('/tasa', async (req, res) => {
     const tasa = await obtenerTasaBCV();
     res.json({ tasa });

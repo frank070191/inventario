@@ -13,10 +13,8 @@ function App() {
 
   const [carga, setCarga] = useState({ codigo: '', proveedor: '', nombre: '', marca: '', estante: '', costo: '', venta: '', cantidad: '' });
   
-  // Estados de venta actualizados
   const [venta, setVenta] = useState({ codigo: '', cantidad: '', precioManual: '' });
   const [infoVenta, setInfoVenta] = useState(null);
-  // Lista de pagos (inicia con uno solo)
   const [pagos, setPagos] = useState([{ metodo: METODOS_PAGO[0], monto: '' }]);
 
   const consultar = async () => {
@@ -65,11 +63,9 @@ function App() {
     setInfoVenta(prod || null);
   };
 
-  // --- LÓGICA PARA PAGOS MÚLTIPLES ---
-  const agregarPago = () => {
-    setPagos([...pagos, { metodo: METODOS_PAGO[0], monto: '' }]);
-  };
-
+  // --- LÓGICA DE PAGOS ---
+  const agregarPago = () => setPagos([...pagos, { metodo: METODOS_PAGO[0], monto: '' }]);
+  
   const eliminarPago = (index) => {
     if (pagos.length > 1) {
       const nuevosPagos = pagos.filter((_, i) => i !== index);
@@ -86,11 +82,8 @@ function App() {
   const venderProducto = async (e) => {
     e.preventDefault();
     try {
-      // Validar que al menos se haya ingresado un monto válido
       const pagosValidos = pagos.filter(p => p.monto && parseFloat(p.monto) > 0);
-      if (pagosValidos.length === 0) {
-        return setMensaje('Debes ingresar al menos un monto de pago.');
-      }
+      if (pagosValidos.length === 0) return setMensaje('Debes ingresar al menos un monto de pago.');
 
       const body = { ...venta, pagos: pagosValidos };
       const res = await fetch(`${API_URL}/vender`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -98,7 +91,6 @@ function App() {
       
       setMensaje(`${data.message || data.error} - Total: $${data.totalUSD?.toFixed(2)} / Bs. ${data.totalBS?.toFixed(2)}`);
       
-      // Limpiar formulario
       setVenta({ codigo: '', cantidad: '', precioManual: '' });
       setPagos([{ metodo: METODOS_PAGO[0], monto: '' }]);
       setInfoVenta(null);
@@ -108,9 +100,14 @@ function App() {
 
   const productosFiltrados = productos.filter(p => p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase()));
 
-  // Calcular el total actual de la venta para mostrarlo
+  // --- CÁLCULOS DE TOTALES Y RESTANTE ---
   const precioVentaActual = parseFloat(venta.precioManual) || parseFloat(infoVenta?.Venta || 0);
   const totalVentaActual = precioVentaActual * (parseInt(venta.cantidad) || 0);
+  
+  // Sumamos lo que se ha ingresado en los pagos
+  const totalPagado = pagos.reduce((acc, pago) => acc + (parseFloat(pago.monto) || 0), 0);
+  // Calculamos el restante (si es negativo, es porque hay vuelto)
+  const restante = totalVentaActual - totalPagado;
 
   return (
     <div className="container">
@@ -194,7 +191,6 @@ function App() {
 
           <input placeholder="Cantidad a Vender" type="number" value={venta.cantidad} onChange={e => setVenta({...venta, cantidad: e.target.value})} required />
           
-          {/* SECCIÓN DE PAGOS MÚLTIPLES */}
           <div style={{ marginTop: '10px', padding: '10px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
             <h4 style={{ margin: '0 0 10px 0', textAlign: 'center', color: '#2c3e50' }}>Métodos de Pago Recibidos</h4>
             {pagos.map((pago, index) => (
@@ -202,11 +198,7 @@ function App() {
                 <select value={pago.metodo} onChange={e => actualizarPago(index, 'metodo', e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }}>
                   {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
-                <input 
-                  type="number" placeholder="$ Monto" value={pago.monto} 
-                  onChange={e => actualizarPago(index, 'monto', e.target.value)} 
-                  style={{ width: '100px', padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }}
-                />
+                <input type="number" placeholder="$ Monto" value={pago.monto} onChange={e => actualizarPago(index, 'monto', e.target.value)} style={{ width: '100px', padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }} />
                 {pagos.length > 1 && (
                   <button type="button" onClick={() => eliminarPago(index)} style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '8px', borderRadius: '5px', cursor: 'pointer' }}>X</button>
                 )}
@@ -217,10 +209,17 @@ function App() {
             </button>
           </div>
 
+          {/* --- SECCIÓN DE TOTALES Y RESTANTE --- */}
           {totalVentaActual > 0 && (
-            <div style={{ textAlign: 'center', fontWeight: 'bold', marginTop: '10px', color: '#2c3e50' }}>
-              Total de Venta: ${totalVentaActual.toFixed(2)} <br/>
-              <span style={{ color: '#28a745' }}>Bs. {(totalVentaActual * tasa).toFixed(2)}</span>
+            <div style={{ textAlign: 'center', marginTop: '10px', padding: '10px', backgroundColor: '#e9ecef', borderRadius: '8px' }}>
+              <p style={{ margin: '5px 0', fontWeight: 'bold', color: '#2c3e50' }}>
+                Total de Venta: ${totalVentaActual.toFixed(2)} <br/>
+                <span style={{ color: '#28a745' }}>Bs. {(totalVentaActual * tasa).toFixed(2)}</span>
+              </p>
+              <hr style={{ border: '0.5px solid #ccc', margin: '5px 0' }} />
+              <p style={{ margin: '5px 0', fontWeight: 'bold', color: restante > 0 ? '#dc3545' : '#28a745' }}>
+                {restante > 0 ? `Falta por cobrar: $${restante.toFixed(2)}` : `Vuelto: $${Math.abs(restante).toFixed(2)}`}
+              </p>
             </div>
           )}
 
