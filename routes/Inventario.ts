@@ -3,15 +3,11 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// Variable en memoria para guardar la tasa (por defecto busca la del BCV)
+// Variable en memoria para guardar la tasa manual
 let tasaManualGlobal: number | null = null;
 
-// Obtener tasa BCV (automática)
 const obtenerTasaBCV = async () => {
-  // Si el usuario ya ingresó una tasa manual, usamos esa
-  if (tasaManualGlobal && tasaManualGlobal > 0) {
-    return tasaManualGlobal;
-  }
+  if (tasaManualGlobal && tasaManualGlobal > 0) return tasaManualGlobal;
 
   try {
     const res = await fetch('https://www.bcv.org.ve/', {
@@ -21,31 +17,21 @@ const obtenerTasaBCV = async () => {
         'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8'
       }
     });
-    
     if (!res.ok) throw new Error('Error al conectar con el BCV');
-    
     const html = await res.text();
     const match = html.match(/<div[^>]*id="dolar"[^>]*>[\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>/);
-    
     if (match && match[1]) {
       const tasaStr = match[1].replace(/\./g, '').replace(',', '.');
       const tasa = parseFloat(tasaStr);
-      if (tasa > 100 && tasa < 2000) {
-        console.log(`✅ Tasa BCV automática obtenida: ${tasa}`);
-        return tasa;
-      }
+      if (tasa > 100 && tasa < 2000) return tasa;
     }
     throw new Error('No se pudo extraer el valor');
-    
   } catch (error) {
-    console.error('⚠️ Error obteniendo tasa del BCV directo. Usando respaldo...');
     try {
       const resFallback = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
       const data = await resFallback.json();
       return data.rate || 0;
-    } catch (fallbackError) {
-      return 0;
-    }
+    } catch (fallbackError) { return 0; }
   }
 };
 
@@ -56,9 +42,7 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
     await sheetHistorial.addRow({
       Fecha: fecha, Tipo: tipo, Codigo: codigo, Cantidad: cantidad, Pago: pagoResumen, Tasa: tasa, TotalUSD: totalUSD, TotalBS: totalBS
     });
-  } catch (error: any) {
-    console.error('Error al guardar en historial:', error);
-  }
+  } catch (error: any) { console.error('Error historial:', error); }
 };
 
 router.get('/', async (req, res) => {
@@ -71,9 +55,7 @@ router.get('/', async (req, res) => {
       Venta: row.get('VENTA'), Existencia: row.get('EXISTENCIA')
     }));
     res.json(data);
-  } catch (error) {
-    res.status(500).json({ error: 'Error al leer el inventario' });
-  }
+  } catch (error) { res.status(500).json({ error: 'Error al leer inventario' }); }
 });
 
 router.post('/cargar', async (req, res) => {
@@ -94,17 +76,15 @@ router.post('/cargar', async (req, res) => {
       if (estante) producto.set('ESTANTE', estante);
       await producto.save();
       await guardarHistorial('Carga', codigo, cantidad, 'N/A', 0, 0, 0);
-      res.json({ message: 'Stock actualizado correctamente', nuevaExistencia });
+      res.json({ message: 'Stock actualizado', nuevaExistencia });
     } else {
       await sheet.addRow({
         CODIGO: codigo, PROVEEDOR: proveedor, NOMBRE: nombre, MARCA: marca, ESTANTE: estante, COSTO: costo, VENTA: venta, EXISTENCIA: cantidad
       });
       await guardarHistorial('Carga', codigo, cantidad, 'N/A', 0, 0, 0);
-      res.json({ message: 'Producto nuevo cargado correctamente' });
+      res.json({ message: 'Producto nuevo cargado' });
     }
-  } catch (error) {
-    res.status(500).json({ error: 'Error al cargar mercancía' });
-  }
+  } catch (error) { res.status(500).json({ error: 'Error al cargar' }); }
 });
 
 router.post('/vender', async (req, res) => {
@@ -119,43 +99,82 @@ router.post('/vender', async (req, res) => {
     const existenciaActual = parseInt(producto.get('EXISTENCIA') || '0');
     const cantidadVender = parseInt(cantidad);
 
-    if (existenciaActual < cantidadVender) {
-      return res.status(400).json({ error: 'No hay suficiente stock' });
-    }
+    if (existenciaActual < cantidadVender) return res.status(400).json({ error: 'No hay stock' });
 
     const precioVenta = parseFloat(precioManual) || parseFloat(producto.get('VENTA') || '0');
     const totalUSD = precioVenta * cantidadVender;
     const tasaBCV = await obtenerTasaBCV();
     const totalBS = totalUSD * tasaBCV;
-
     const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2)}`).join(' | ');
 
     producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
     await producto.save();
-    
     await guardarHistorial('Venta', codigo, cantidad, pagoResumen, tasaBCV, totalUSD, totalBS);
     
-    res.json({ message: 'Venta realizada con éxito', stockRestante: existenciaActual - cantidadVender, totalUSD, totalBS, tasaBCV });
-  } catch (error) {
-    res.status(500).json({ error: 'Error al procesar la venta' });
-  }
+    res.json({ message: 'Venta realizada', stockRestante: existenciaActual - cantidadVender, totalUSD, totalBS, tasaBCV });
+  } catch (error) { res.status(500).json({ error: 'Error al vender' }); }
 });
 
-// 4. OBTENER TASA DEL DÍA
-router.get('/tasa', async (req, res) => {
-    const tasa = await obtenerTasaBCV();
-    res.json({ tasa });
-});
+router.get('/tasa', async (req, res) => { res.json({ tasa: await obtenerTasaBCV() }); });
 
-// 5. NUEVA RUTA: ACTUALIZAR TASA MANUAL
 router.post('/tasa-manual', (req, res) => {
   const { nuevaTasa } = req.body;
   if (nuevaTasa && !isNaN(nuevaTasa) && nuevaTasa > 0) {
     tasaManualGlobal = parseFloat(nuevaTasa);
-    console.log(`⚠️ Tasa actualizada manualmente a: ${tasaManualGlobal}`);
-    res.json({ message: 'Tasa actualizada manualmente', tasa: tasaManualGlobal });
-  } else {
-    res.status(400).json({ error: 'Tasa inválida' });
+    res.json({ message: 'Tasa actualizada', tasa: tasaManualGlobal });
+  } else { res.status(400).json({ error: 'Tasa inválida' }); }
+});
+
+// 6. NUEVA RUTA: REPORTE DE VENTAS DEL DÍA
+router.get('/reporte-hoy', async (req, res) => {
+  try {
+    const sheetHistorial = await getSheet('Historial');
+    const rows = await sheetHistorial.getRows();
+    
+    // Obtenemos la fecha de hoy en formato de Venezuela (DD/MM/YYYY)
+    const hoy = new Date().toLocaleDateString("es-VE", { timeZone: "America/Caracas" });
+    
+    // Filtramos solo las ventas de hoy
+    const ventasHoy = rows.filter((row: any) => {
+      const fechaFila = row.get('Fecha') || '';
+      const tipo = row.get('Tipo') || '';
+      return tipo === 'Venta' && fechaFila.startsWith(hoy);
+    }).map((row: any) => ({
+      Fecha: row.get('Fecha'),
+      Codigo: row.get('Codigo'),
+      Cantidad: row.get('Cantidad'),
+      Pago: row.get('Pago'),
+      TotalUSD: parseFloat(row.get('TotalUSD') || '0'),
+      TotalBS: parseFloat(row.get('TotalBS') || '0')
+    }));
+
+    // Calculamos los totales generales
+    const granTotalUSD = ventasHoy.reduce((acc, v) => acc + v.TotalUSD, 0);
+    const granTotalBS = ventasHoy.reduce((acc, v) => acc + v.TotalBS, 0);
+
+    // Calculamos el desglose por método de pago
+    const metodosMap: { [key: string]: number } = {};
+    ventasHoy.forEach(venta => {
+      const pagosArray = venta.Pago.split(' | ');
+      pagosArray.forEach((pagoStr: string) => {
+        // Formato esperado: "Metodo: $10.00"
+        const [metodo, montoStr] = pagoStr.split(': $');
+        if (metodo && montoStr) {
+          const monto = parseFloat(montoStr);
+          metodosMap[metodo] = (metodosMap[metodo] || 0) + monto;
+        }
+      });
+    });
+
+    res.json({
+      ventas: ventasHoy,
+      granTotalUSD,
+      granTotalBS,
+      desglosePagos: metodosMap
+    });
+  } catch (error) {
+    console.error('Error al generar reporte:', error);
+    res.status(500).json({ error: 'Error al generar el reporte' });
   }
 });
 
