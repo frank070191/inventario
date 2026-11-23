@@ -3,7 +3,7 @@ import './App.css';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
-const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario'; // Asegúrate de que sea tu URL
+const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario'; 
 const METODOS_PAGO = ["T. Débito Bancamiga", "T. Crédito Banca", "PM Empresa", "PM Persona", "Biopago", "Transf Vzla", "Transf. Bancamiga", "T. Débito BNC", "T. Crédito BNC", "Cashea"];
 
 const formatoMoneda = (numero) => {
@@ -22,11 +22,15 @@ function App() {
   const [tasaManualInput, setTasaManualInput] = useState('');
 
   const [carga, setCarga] = useState({ codigo: '', proveedor: '', nombre: '', marca: '', estante: '', costo: '', venta: '', cantidad: '' });
-  const [venta, setVenta] = useState({ codigo: '', cantidad: '', precioManual: '' });
-  const [infoVenta, setInfoVenta] = useState(null);
+  
+  // Lógica del Carrito de Ventas
+  const [carrito, setCarrito] = useState([]);
+  const [productoActual, setProductoActual] = useState({ codigo: '', cantidad: '', precio: '' });
   const [pagos, setPagos] = useState([{ metodo: METODOS_PAGO[0], monto: '' }]);
+
   const [reporte, setReporte] = useState(null);
 
+  // ... (funciones consultar, obtenerTasa, generarReporte, guardarTasaManual iguales que antes) ...
   const consultar = async () => {
     try {
       const res = await fetch(API_URL);
@@ -53,27 +57,22 @@ function App() {
 
   const guardarTasaManual = async () => {
     try {
-      // Enviamos el texto exacto que el usuario escribió (con coma o punto)
       const res = await fetch(`${API_URL}/tasa-manual`, {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' }, 
-        body: JSON.stringify({ nuevaTasa: tasaManualInput })
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nuevaTasa: tasaManualInput })
       });
       const data = await res.json();
       if (res.ok) {
         setTasa(data.tasa);
         setEditandoTasa(false);
         setMensaje(`Tasa actualizada a ${data.tasa.toFixed(4)} Bs/$`);
-      } else {
-        setMensaje(data.error);
-      }
+      } else { setMensaje(data.error); }
     } catch (error) { setMensaje('Error al guardar tasa'); }
   };
 
   useEffect(() => { consultar(); obtenerTasa(); }, []);
   useEffect(() => { if (vista === 'reporte') generarReporte(); }, [vista]);
 
-  // --- LÓGICA DE CÁLCULO Y DEMÁS (Igual que antes) ---
+  // ... (Funciones de carga iguales) ...
   const handleCodigoCargaChange = (e) => {
     const codigo = e.target.value;
     const prod = productos.find(p => p.Codigo === codigo);
@@ -95,40 +94,81 @@ function App() {
     } catch (error) { setMensaje('Error al cargar.'); }
   };
 
+  // --- LÓGICA DEL CARRITO ---
   const handleCodigoVentaChange = (e) => {
     const codigo = e.target.value;
-    setVenta({ ...venta, codigo: codigo, precioManual: '' });
     const prod = productos.find(p => p.Codigo === codigo);
-    setInfoVenta(prod || null);
+    if (prod) {
+      setProductoActual({ codigo, cantidad: '', precio: prod.Venta || '' });
+    } else {
+      setProductoActual({ codigo, cantidad: '', precio: '' });
+    }
   };
 
+  const agregarAlCarrito = () => {
+    if (!productoActual.codigo || !productoActual.cantidad || !productoActual.precio) return setMensaje('Completa los datos del producto.');
+    
+    const prodInfo = productos.find(p => p.Codigo === productoActual.codigo);
+    if (!prodInfo) return setMensaje('Producto no existe.');
+
+    if (parseInt(productoActual.cantidad) > parseInt(prodInfo.Existencia)) {
+      return setMensaje(`Solo hay ${prodInfo.Existencia} unidades de ${prodInfo.Nombre}.`);
+    }
+
+    // Verificar si ya está en el carrito para sumar cantidad
+    const existeIndex = carrito.findIndex(item => item.codigo === productoActual.codigo);
+    if (existeIndex >= 0) {
+      const nuevoCarrito = [...carrito];
+      nuevoCarrito[existeIndex].cantidad = (parseInt(nuevoCarrito[existeIndex].cantidad) + parseInt(productoActual.cantidad)).toString();
+      setCarrito(nuevoCarrito);
+    } else {
+      setCarrito([...carrito, { 
+        codigo: productoActual.codigo, 
+        nombre: prodInfo.Nombre, 
+        cantidad: productoActual.cantidad, 
+        precio: productoActual.precio 
+      }]);
+    }
+    setProductoActual({ codigo: '', cantidad: '', precio: '' });
+    setMensaje('');
+  };
+
+  const eliminarDelCarrito = (index) => {
+    const nuevoCarrito = carrito.filter((_, i) => i !== index);
+    setCarrito(nuevoCarrito);
+  };
+
+  // --- PAGOS Y TOTALES ---
   const agregarPago = () => setPagos([...pagos, { metodo: METODOS_PAGO[0], monto: '' }]);
   const eliminarPago = (index) => { if (pagos.length > 1) setPagos(pagos.filter((_, i) => i !== index)); };
   const actualizarPago = (index, campo, valor) => { const nuevosPagos = [...pagos]; nuevosPagos[index][campo] = valor; setPagos(nuevosPagos); };
 
   const venderProducto = async (e) => {
     e.preventDefault();
+    if (carrito.length === 0) return setMensaje('El carrito está vacío.');
+
     try {
       const pagosValidos = pagos.filter(p => p.monto && parseFloat(p.monto) > 0);
       if (pagosValidos.length === 0) return setMensaje('Debes ingresar al menos un monto de pago.');
 
-      const body = { ...venta, pagos: pagosValidos };
+      const body = { carrito, pagos: pagosValidos };
       const res = await fetch(`${API_URL}/vender`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
       const data = await res.json();
       
-      setMensaje(`${data.message || data.error} - Total: $${formatoMoneda(data.totalUSD)} / Bs. ${formatoMoneda(data.totalBS)}`);
-      
-      setVenta({ codigo: '', cantidad: '', precioManual: '' });
-      setPagos([{ metodo: METODOS_PAGO[0], monto: '' }]);
-      setInfoVenta(null);
-      consultar(); 
+      if (res.ok) {
+        setMensaje(`${data.message} - Total: $${formatoMoneda(data.totalUSD)} / Bs. ${formatoMoneda(data.totalBS)}`);
+        setCarrito([]);
+        setPagos([{ metodo: METODOS_PAGO[0], monto: '' }]);
+        consultar(); 
+      } else {
+        setMensaje(data.error);
+      }
     } catch (error) { setMensaje('Error al vender.'); }
   };
 
   const descargarPDF = () => {
     if (!reporte) return;
     const doc = new jsPDF();
-    
     doc.text('Reporte de Ventas del Día', 14, 15);
     doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 22);
     doc.text(`Total ($): $${formatoMoneda(reporte.granTotalUSD)}`, 14, 29);
@@ -138,36 +178,25 @@ function App() {
       metodo, `$${formatoMoneda(montos.usd)}`, `Bs. ${formatoMoneda(montos.bs)}`
     ]);
 
-    autoTable(doc, {
-      startY: 45,
-      head: [['Método de Pago', 'Monto ($)', 'Monto (Bs)']],
-      body: pagosData,
-      theme: 'grid',
-      styles: { fontSize: 10 },
-    });
+    autoTable(doc, { startY: 45, head: [['Método de Pago', 'Monto ($)', 'Monto (Bs)']], body: pagosData, theme: 'grid' });
 
     const ventasData = reporte.ventas.map(v => [
       v.Fecha.split(', ')[1], v.Codigo, v.Cantidad, `$${formatoMoneda(v.TotalUSD)}`
     ]);
 
-    autoTable(doc, {
-      startY: doc.lastAutoTable.finalY + 10,
-      head: [['Hora', 'Código', 'Cantidad', 'Total $']],
-      body: ventasData,
-      theme: 'grid',
-      styles: { fontSize: 10 },
-    });
+    autoTable(doc, { startY: doc.lastAutoTable.finalY + 10, head: [['Hora', 'Código', 'Cantidad', 'Total $']], body: ventasData, theme: 'grid' });
 
     doc.save(`Reporte_Ventas_${new Date().toISOString().slice(0,10)}.pdf`);
   };
 
-  const productosFiltrados = productos.filter(p => p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase()));
-  const precioVentaActual = parseFloat(venta.precioManual) || parseFloat(infoVenta?.Venta || 0);
-  const totalVentaActual = precioVentaActual * (parseInt(venta.cantidad) || 0);
+  // Cálculos del carrito
+  const totalVentaActual = carrito.reduce((acc, item) => acc + (parseFloat(item.precio) * parseInt(item.cantidad)), 0);
   const totalPagado = pagos.reduce((acc, pago) => acc + (parseFloat(pago.monto) || 0), 0);
   const restante = totalVentaActual - totalPagado;
 
-  // Estilos
+  const productosFiltrados = productos.filter(p => p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase()));
+
+  // Estilos (iguales a antes)
   const styleBtnBase = { padding: '12px 24px', fontSize: '16px', fontWeight: 'bold', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1, minWidth: '45%', marginBottom: '5px' };
   const styleBtnBlue = { ...styleBtnBase, backgroundColor: '#007bff', boxShadow: '0 6px 0 #0056b3' };
   const styleBtnGreen = { ...styleBtnBase, backgroundColor: '#28a745', boxShadow: '0 6px 0 #1e7e34' };
@@ -200,20 +229,13 @@ function App() {
 
       {mensaje && <div style={{ backgroundColor: '#d1ecf1', color: '#0c5460', padding: '15px', borderRadius: '8px', textAlign: 'center', fontWeight: 'bold', marginBottom: '20px' }}>{mensaje}</div>}
 
-      {vista === 'consultar' && ( /* ... Lo mismo de antes ... */ 
+      {vista === 'consultar' && ( /* ... Tabla de consulta ... */
         <div>
           <input type="text" placeholder="🔍 Buscar producto..." value={busqueda} onChange={e => setBusqueda(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box' }}/>
           <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '500px' }}>
               <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
-                <tr>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Código</th>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Nombre</th>
-                  <th style={{ textAlign: 'left', padding: '10px' }}>Marca</th>
-                  <th style={{ textAlign: 'center', padding: '10px' }}>Estante</th>
-                  <th style={{ textAlign: 'right', padding: '10px' }}>Precio</th>
-                  <th style={{ textAlign: 'center', padding: '10px' }}>Stock</th>
-                </tr>
+                <tr><th style={{ textAlign: 'left', padding: '10px' }}>Código</th><th style={{ textAlign: 'left', padding: '10px' }}>Nombre</th><th style={{ textAlign: 'left', padding: '10px' }}>Marca</th><th style={{ textAlign: 'center', padding: '10px' }}>Estante</th><th style={{ textAlign: 'right', padding: '10px' }}>Precio</th><th style={{ textAlign: 'center', padding: '10px' }}>Stock</th></tr>
               </thead>
               <tbody>
                 {productosFiltrados.map((p, i) => (
@@ -232,7 +254,7 @@ function App() {
         </div>
       )}
 
-      {vista === 'cargar' && ( /* ... Lo mismo de antes ... */
+      {vista === 'cargar' && ( /* ... Formulario de carga ... */
         <form onSubmit={cargarProducto} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', maxWidth: '500px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <h2 style={{textAlign: 'center', color: '#2c3e50'}}>Ingresar Mercancía</h2>
           <input placeholder="Código" value={carga.codigo} onChange={handleCodigoCargaChange} required style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
@@ -249,31 +271,56 @@ function App() {
         </form>
       )}
 
-      {vista === 'vender' && ( /* ... Lo mismo de antes ... */
-        <form onSubmit={venderProducto} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', maxWidth: '500px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
-          <h2 style={{textAlign: 'center', color: '#2c3e50'}}>Registrar Venta</h2>
-          <input placeholder="Código del Producto" value={venta.codigo} onChange={handleCodigoVentaChange} required style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+      {vista === 'vender' && (
+        <div style={{ backgroundColor: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', maxWidth: '600px', margin: '0 auto' }}>
+          <h2 style={{textAlign: 'center', color: '#2c3e50', marginTop: 0}}>Registrar Venta</h2>
           
-          {infoVenta && (
-            <div style={{ backgroundColor: '#e9ecef', padding: '10px', borderRadius: '5px', borderLeft: '5px solid #007bff' }}>
-              <p style={{fontSize: '14px', margin: '5px 0'}}><strong>Producto:</strong> {infoVenta.Nombre}</p>
-              <p style={{fontSize: '14px', margin: '5px 0'}}><strong>Stock:</strong> {infoVenta.Existencia} unds</p>
+          {/* Formulario para agregar al carrito */}
+          <div style={{ padding: '10px', backgroundColor: '#f8f9fa', borderRadius: '8px', border: '1px solid #ddd', marginBottom: '20px' }}>
+            <h4 style={{ margin: '0 0 10px 0', color: '#2c3e50' }}>Añadir Producto</h4>
+            <div style={{ display: 'flex', gap: '5px', flexWrap: 'wrap' }}>
+              <input placeholder="Código" value={productoActual.codigo} onChange={handleCodigoVentaChange} style={{flex: 2, padding: '8px', minWidth: '100px'}} />
+              <input placeholder="Cant." type="number" value={productoActual.cantidad} onChange={e => setProductoActual({...productoActual, cantidad: e.target.value})} style={{flex: 1, padding: '8px', minWidth: '60px'}} />
+              <input placeholder="Precio $" type="number" value={productoActual.precio} onChange={e => setProductoActual({...productoActual, precio: e.target.value})} style={{flex: 1, padding: '8px', minWidth: '80px'}} />
+              <button onClick={agregarAlCarrito} style={{ padding: '8px 15px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
             </div>
-          )}
+            {productoActual.codigo && (
+               <p style={{margin: '5px 0 0 0', fontSize: '12px', color: '#666'}}>
+                 {productos.find(p => p.Codigo === productoActual.codigo)?.Nombre || 'Producto no encontrado'}
+               </p>
+            )}
+          </div>
 
-          <label style={{fontSize: '12px', color: '#666'}}>Precio Unitario (USD):</label>
-          <input type="number" placeholder={`Por defecto: $${infoVenta?.Venta || '0'}`} value={venta.precioManual} onChange={e => setVenta({...venta, precioManual: e.target.value})} style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
+          {/* Tabla del Carrito */}
+          <div style={{ overflowX: 'auto', marginBottom: '20px' }}>
+            <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+              <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
+                <tr><th style={{textAlign: 'left', padding: '8px'}}>Producto</th><th style={{textAlign: 'center', padding: '8px'}}>Cant</th><th style={{textAlign: 'right', padding: '8px'}}>Precio</th><th style={{textAlign: 'right', padding: '8px'}}>Subtotal</th><th></th></tr>
+              </thead>
+              <tbody>
+                {carrito.map((item, i) => (
+                  <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{padding: '8px'}}>{item.nombre}</td>
+                    <td style={{textAlign: 'center', padding: '8px'}}>{item.cantidad}</td>
+                    <td style={{textAlign: 'right', padding: '8px'}}>${formatoMoneda(item.precio)}</td>
+                    <td style={{textAlign: 'right', padding: '8px', fontWeight: 'bold'}}>${formatoMoneda(item.precio * item.cantidad)}</td>
+                    <td style={{textAlign: 'center', padding: '8px'}}><button type="button" onClick={() => eliminarDelCarrito(i)} style={{backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '3px', padding: '3px 8px', cursor: 'pointer'}}>X</button></td>
+                  </tr>
+                ))}
+                {carrito.length === 0 && <tr><td colSpan="5" style={{textAlign: 'center', padding: '10px'}}>Carrito vacío</td></tr>}
+              </tbody>
+            </table>
+          </div>
 
-          <input placeholder="Cantidad a Vender" type="number" value={venta.cantidad} onChange={e => setVenta({...venta, cantidad: e.target.value})} required style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
-          
-          <div style={{ marginTop: '10px', padding: '10px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
+          {/* Pagos */}
+          <div style={{ padding: '10px', border: '1px solid #ddd', borderRadius: '8px', backgroundColor: '#f9f9f9' }}>
             <h4 style={{ margin: '0 0 10px 0', textAlign: 'center', color: '#2c3e50' }}>Pagos</h4>
             {pagos.map((pago, index) => (
               <div key={index} style={{ display: 'flex', gap: '5px', marginBottom: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
                 <select value={pago.metodo} onChange={e => actualizarPago(index, 'metodo', e.target.value)} style={{ flex: 1, padding: '8px', borderRadius: '5px', border: '1px solid #ccc', minWidth: '150px' }}>
                   {METODOS_PAGO.map(m => <option key={m} value={m}>{m}</option>)}
                 </select>
-                <input type="number" placeholder="$ Monto" value={pago.monto} onChange={e => actualizarPago(index, 'monto', e.target.value)} style={{ width: '80px', padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }} />
+                <input type="number" placeholder="$ Monto" value={pago.monto} onChange={e => actualizarPago(index, 'monto', e.target.value)} style={{ width: '100px', padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }} />
                 {pagos.length > 1 && (
                   <button type="button" onClick={() => eliminarPago(index)} style={{ backgroundColor: '#dc3545', color: 'white', border: 'none', padding: '8px', borderRadius: '5px' }}>X</button>
                 )}
@@ -284,37 +331,31 @@ function App() {
             </button>
           </div>
 
+          {/* Totales */}
           {totalVentaActual > 0 && (
-            <div style={{ textAlign: 'center', marginTop: '10px', padding: '10px', backgroundColor: '#e9ecef', borderRadius: '8px' }}>
-              <p style={{ margin: '5px 0', fontWeight: 'bold', color: '#2c3e50', fontSize: '14px' }}>
+            <div style={{ textAlign: 'center', marginTop: '20px', padding: '15px', backgroundColor: '#e9ecef', borderRadius: '8px' }}>
+              <p style={{ margin: '5px 0', fontWeight: 'bold', color: '#2c3e50', fontSize: '18px' }}>
                 Total: ${formatoMoneda(totalVentaActual)} <br/>
-                <span style={{ color: '#28a745' }}>Bs. {formatoMoneda(totalVentaActual * tasa)}</span>
+                <span style={{ color: '#28a745', fontSize: '16px' }}>Bs. {formatoMoneda(totalVentaActual * tasa)}</span>
               </p>
-              <hr style={{ border: '0.5px solid #ccc', margin: '5px 0' }} />
-              <p style={{ margin: '5px 0', fontWeight: 'bold', color: restante > 0 ? '#dc3545' : '#28a745', fontSize: '14px' }}>
-                {restante > 0 ? `Falta: $${formatoMoneda(restante)}` : `Vuelto: $${formatoMoneda(Math.abs(restante))}`}
+              <hr style={{ border: '0.5px solid #ccc', margin: '10px 0' }} />
+              <p style={{ margin: '5px 0', fontWeight: 'bold', color: restante > 0 ? '#dc3545' : '#28a745', fontSize: '16px' }}>
+                {restante > 0 ? `Falta por cobrar: $${formatoMoneda(restante)}` : `Vuelto: $${formatoMoneda(Math.abs(restante))}`}
               </p>
             </div>
           )}
 
-          <button type="submit" style={styleBtnRed}>Vender</button>
-        </form>
+          <button onClick={venderProducto} style={{...styleBtnRed, width: '100%', marginTop: '15px'}}>Procesar Venta</button>
+        </div>
       )}
 
-      {vista === 'reporte' && (
+      {vista === 'reporte' && ( /* ... Tabla del reporte igual que antes ... */
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h2 style={{color: '#2c3e50', margin: 0}}>Reporte de Ventas de Hoy</h2>
-            {reporte && (
-              <button onClick={descargarPDF} style={{ padding: '10px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
-                📄 Descargar PDF
-              </button>
-            )}
+            {reporte && <button onClick={descargarPDF} style={{ padding: '10px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>📄 Descargar PDF</button>}
           </div>
-          
-          {!reporte ? (
-            <p style={{textAlign: 'center'}}>Cargando reporte...</p>
-          ) : (
+          {!reporte ? ( <p style={{textAlign: 'center'}}>Cargando reporte...</p> ) : (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
                 <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
@@ -326,16 +367,11 @@ function App() {
                   <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>Bs. {formatoMoneda(reporte.granTotalBS)}</p>
                 </div>
               </div>
-
               <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto', marginBottom: '20px' }}>
                 <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Pagos Recibidos</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '300px' }}>
                   <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: '10px' }}>Método</th>
-                      <th style={{ textAlign: 'right', padding: '10px' }}>Monto ($)</th>
-                      <th style={{ textAlign: 'right', padding: '10px' }}>Monto (Bs)</th>
-                    </tr>
+                    <tr><th style={{ textAlign: 'left', padding: '10px' }}>Método</th><th style={{ textAlign: 'right', padding: '10px' }}>Monto ($)</th><th style={{ textAlign: 'right', padding: '10px' }}>Monto (Bs)</th></tr>
                   </thead>
                   <tbody>
                     {Object.entries(reporte.desglosePagos).map(([metodo, montos], i) => (
@@ -345,23 +381,14 @@ function App() {
                         <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', color: '#28a745', padding: '10px' }}>Bs. {formatoMoneda(montos.bs)}</td>
                       </tr>
                     ))}
-                    {Object.keys(reporte.desglosePagos).length === 0 && (
-                      <tr><td colSpan="3" style={{textAlign: 'center', padding: '10px'}}>No hay ventas registradas hoy.</td></tr>
-                    )}
                   </tbody>
                 </table>
               </div>
-
               <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
                 <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Detalle de Ventas</h3>
                 <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '400px' }}>
                   <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: '10px' }}>Hora</th>
-                      <th style={{ textAlign: 'left', padding: '10px' }}>Código</th>
-                      <th style={{ textAlign: 'center', padding: '10px' }}>Cant</th>
-                      <th style={{ textAlign: 'right', padding: '10px' }}>Total $</th>
-                    </tr>
+                    <tr><th style={{ textAlign: 'left', padding: '10px' }}>Hora</th><th style={{ textAlign: 'left', padding: '10px' }}>Código</th><th style={{ textAlign: 'center', padding: '10px' }}>Cant</th><th style={{ textAlign: 'right', padding: '10px' }}>Total $</th></tr>
                   </thead>
                   <tbody>
                     {reporte.ventas.map((v, i) => (

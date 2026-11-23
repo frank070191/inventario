@@ -3,6 +3,7 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
+// --- GESTIÓN DE TASAS ---
 const obtenerTasaManualGuardada = async () => {
   try {
     const sheetConfig = await getSheet('Configuracion');
@@ -10,13 +11,10 @@ const obtenerTasaManualGuardada = async () => {
     if (rows.length > 0) {
       const val = rows[0].get('TasaManual');
       if (!val) return null;
-      // Leemos el dato (ej. "919,8227") y lo convertimos a número (919.8227)
       return parseFloat(val.toString().replace(',', '.'));
     }
     return null;
-  } catch (error) {
-    return null;
-  }
+  } catch (error) { return null; }
 };
 
 const obtenerTasaBCV = async () => {
@@ -25,8 +23,9 @@ const obtenerTasaBCV = async () => {
 
   try {
     const res = await fetch('https://www.bcv.org.ve/', {
-      headers: { 'User-Agent': 'Mozilla/5.0...' }
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' }
     });
+    if (!res.ok) throw new Error('Error BCV');
     const html = await res.text();
     const match = html.match(/<div[^>]*id="dolar"[^>]*>[\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>/);
     if (match && match[1]) {
@@ -34,7 +33,7 @@ const obtenerTasaBCV = async () => {
       const tasa = parseFloat(tasaStr);
       if (tasa > 100 && tasa < 2000) return tasa;
     }
-    throw new Error('No se pudo extraer');
+    throw new Error('No match');
   } catch (error) {
     try {
       const resFallback = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
@@ -44,17 +43,13 @@ const obtenerTasaBCV = async () => {
   }
 };
 
+// --- HISTORIAL ---
 const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, pagoResumen: string, tasa: number, totalUSD: number, totalBS: number) => {
   try {
     const sheetHistorial = await getSheet('Historial');
     const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" }); 
     await sheetHistorial.addRow({
-      Fecha: fecha, 
-      Tipo: tipo, 
-      Codigo: codigo, 
-      Cantidad: cantidad, 
-      Pago: pagoResumen, 
-      // CONVERTIMOS EL PUNTO A COMA ANTES DE GUARDAR
+      Fecha: fecha, Tipo: tipo, Codigo: codigo, Cantidad: cantidad, Pago: pagoResumen, 
       Tasa: tasa.toFixed(4).toString().replace('.', ','), 
       TotalUSD: totalUSD.toFixed(2).toString().replace('.', ','),
       TotalBS: totalBS.toFixed(2).toString().replace('.', ',')
@@ -62,7 +57,8 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
   } catch (error: any) { console.error('Error historial:', error); }
 };
 
-router.get('/', async (req, res) => { /* Lo mismo de antes */
+// --- RUTAS ---
+router.get('/', async (req, res) => {
   try {
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
@@ -75,7 +71,7 @@ router.get('/', async (req, res) => { /* Lo mismo de antes */
   } catch (error) { res.status(500).json({ error: 'Error al leer inventario' }); }
 });
 
-router.post('/cargar', async (req, res) => { /* Lo mismo de antes */
+router.post('/cargar', async (req, res) => {
   try {
     const { codigo, proveedor, nombre, marca, estante, costo, venta, cantidad } = req.body;
     const sheet = await getSheet('Inventario');
@@ -104,70 +100,99 @@ router.post('/cargar', async (req, res) => { /* Lo mismo de antes */
   } catch (error) { res.status(500).json({ error: 'Error al cargar' }); }
 });
 
-router.post('/vender', async (req, res) => { /* Lo mismo de antes */
+// VENTA MÚLTIPLE
+router.post('/vender', async (req, res) => {
   try {
-    const { codigo, cantidad, precioManual, pagos } = req.body; 
+    const { carrito, pagos } = req.body; // Recibimos un array de productos (carrito)
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
-    const producto = rows.find((row: any) => row.get('CODIGO') === codigo);
+    
+    // 1. Validar stock de todos los productos primero
+    for (const item of carrito) {
+      const producto = rows.find((row: any) => row.get('CODIGO') === item.codigo);
+      if (!producto) return res.status(404).json({ error: `Producto ${item.codigo} no encontrado` });
+      
+      const existenciaActual = parseInt(producto.get('EXISTENCIA') || '0');
+      if (existenciaActual < parseInt(item.cantidad)) {
+        return res.status(400).json({ error: `No hay stock suficiente de ${producto.get('NOMBRE')}` });
+      }
+    }
 
-    if (!producto) return res.status(404).json({ error: 'Producto no encontrado' });
-
-    const existenciaActual = parseInt(producto.get('EXISTENCIA') || '0');
-    const cantidadVender = parseInt(cantidad);
-
-    if (existenciaActual < cantidadVender) return res.status(400).json({ error: 'No hay stock' });
-
-    const precioVenta = parseFloat(precioManual) || parseFloat(producto.get('VENTA') || '0');
-    const totalUSD = precioVenta * cantidadVender;
+    // 2. Si todo está bien, procesar la venta
     const tasaBCV = await obtenerTasaBCV();
-    const totalBS = totalUSD * tasaBCV;
+    let granTotalUSD = 0;
+    let granTotalBS = 0;
+    
     const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2).replace('.', ',')}`).join(' | ');
 
-    producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
-    await producto.save();
-    await guardarHistorial('Venta', codigo, cantidad, pagoResumen, tasaBCV, totalUSD, totalBS);
+    for (const item of carrito) {
+      const producto = rows.find((row: any) => row.get('CODIGO') === item.codigo);
+      const precioVenta = parseFloat(item.precio) || parseFloat(producto.get('VENTA') || '0');
+      const cantidadVender = parseInt(item.cantidad);
+      
+      const totalUSD = precioVenta * cantidadVender;
+      const totalBS = totalUSD * tasaBCV;
+      
+      granTotalUSD += totalUSD;
+      granTotalBS += totalBS;
+
+      // Descontar stock
+      const existenciaActual = parseInt(producto.get('EXISTENCIA') || '0');
+      producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
+      await producto.save();
+
+      // Guardar registro individual en historial
+      await guardarHistorial('Venta', item.codigo, item.cantidad, pagoResumen, tasaBCV, totalUSD, totalBS);
+    }
     
-    res.json({ message: 'Venta realizada', stockRestante: existenciaActual - cantidadVender, totalUSD, totalBS, tasaBCV });
-  } catch (error) { res.status(500).json({ error: 'Error al vender' }); }
+    res.json({ message: 'Venta realizada con éxito', totalUSD: granTotalUSD, totalBS: granTotalBS, tasaBCV });
+  } catch (error) { 
+    console.error(error);
+    res.status(500).json({ error: 'Error al procesar la venta' }); 
+  }
 });
 
 router.get('/tasa', async (req, res) => { res.json({ tasa: await obtenerTasaBCV() }); });
 
+// ACTUALIZAR TASA Y GUARDAR HISTORIAL
 router.post('/tasa-manual', async (req, res) => {
   const { nuevaTasa } = req.body;
   if (nuevaTasa) {
     try {
-      // El frontend puede enviar "919,8227" o "919.8227". Lo estandarizamos a número.
       const tasaNumerica = parseFloat(nuevaTasa.toString().replace(',', '.'));
-      
-      if (isNaN(tasaNumerica) || tasaNumerica <= 0) {
-        return res.status(400).json({ error: 'Tasa inválida' });
-      }
+      if (isNaN(tasaNumerica) || tasaNumerica <= 0) return res.status(400).json({ error: 'Tasa inválida' });
 
       const sheetConfig = await getSheet('Configuracion');
       const rows = await sheetConfig.getRows();
       const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" });
-      
-      // GUARDAMOS CON COMA PARA QUE GOOGLE SHEETS LO LEA BIEN
       const tasaFormateada = tasaNumerica.toFixed(4).replace('.', ',');
 
+      // Actualizamos la tasa principal (Configuracion)
       if (rows.length > 0) {
-        // Si ya existe una fila, la actualizamos (No borra la hoja, solo el dato)
         rows[0].set('TasaManual', tasaFormateada);
         rows[0].set('Fecha', fecha);
         await rows[0].save();
       } else {
         await sheetConfig.addRow({ TasaManual: tasaFormateada, Fecha: fecha });
       }
+
+      // Guardamos el registro en el Historial de Tasas
+      const sheetTasas = await getSheet('Tasas');
+      await sheetTasas.addRow({
+        Fecha: fecha,
+        Tasa: tasaFormateada,
+        Usuario: 'Admin' // Puedes cambiarlo si luego agregas login
+      });
       
       res.json({ message: 'Tasa guardada', tasa: tasaNumerica });
     } catch (error) {
+      console.error(error);
       res.status(500).json({ error: 'Error al guardar en Sheets' });
     }
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
 });
 
+// REPORTE
 router.get('/reporte-hoy', async (req, res) => {
   try {
     const sheetHistorial = await getSheet('Historial');
@@ -181,7 +206,6 @@ router.get('/reporte-hoy', async (req, res) => {
       Codigo: row.get('Codigo'),
       Cantidad: row.get('Cantidad'),
       Pago: row.get('Pago'),
-      // Al leer, convertimos la coma de vuelta a punto para que JS haga los cálculos
       TotalUSD: parseFloat((row.get('TotalUSD') || '0').toString().replace(',', '.')),
       TotalBS: parseFloat((row.get('TotalBS') || '0').toString().replace(',', '.'))
     }));
@@ -205,12 +229,7 @@ router.get('/reporte-hoy', async (req, res) => {
       });
     });
 
-    res.json({
-      ventas: ventasHoy,
-      granTotalUSD,
-      granTotalBS,
-      desglosePagos: metodosMap
-    });
+    res.json({ ventas: ventasHoy, granTotalUSD, granTotalBS, desglosePagos: metodosMap });
   } catch (error) {
     res.status(500).json({ error: 'Error al generar el reporte' });
   }
