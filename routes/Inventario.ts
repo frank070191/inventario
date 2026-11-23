@@ -3,7 +3,6 @@ import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-// Obtener la tasa manual guardada en Google Sheets
 const obtenerTasaManualGuardada = async () => {
   try {
     const sheetConfig = await getSheet('Configuracion');
@@ -11,7 +10,7 @@ const obtenerTasaManualGuardada = async () => {
     if (rows.length > 0) {
       const val = rows[0].get('TasaManual');
       if (!val) return null;
-      // Convertimos cualquier coma en punto por si el sheet la guardó como texto
+      // Leemos el dato (ej. "919,8227") y lo convertimos a número (919.8227)
       return parseFloat(val.toString().replace(',', '.'));
     }
     return null;
@@ -26,13 +25,8 @@ const obtenerTasaBCV = async () => {
 
   try {
     const res = await fetch('https://www.bcv.org.ve/', {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        'Accept-Language': 'es-ES,es;q=0.9,en;q=0.8'
-      }
+      headers: { 'User-Agent': 'Mozilla/5.0...' }
     });
-    if (!res.ok) throw new Error('Error al conectar con el BCV');
     const html = await res.text();
     const match = html.match(/<div[^>]*id="dolar"[^>]*>[\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>/);
     if (match && match[1]) {
@@ -40,7 +34,7 @@ const obtenerTasaBCV = async () => {
       const tasa = parseFloat(tasaStr);
       if (tasa > 100 && tasa < 2000) return tasa;
     }
-    throw new Error('No se pudo extraer el valor');
+    throw new Error('No se pudo extraer');
   } catch (error) {
     try {
       const resFallback = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
@@ -60,15 +54,15 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
       Codigo: codigo, 
       Cantidad: cantidad, 
       Pago: pagoResumen, 
-      // Forzamos a que el Sheet lo guarde como número con punto decimal
-      Tasa: tasa.toFixed(4).toString(), 
-      TotalUSD: totalUSD.toFixed(2).toString(),
-      TotalBS: totalBS.toFixed(2).toString()
+      // CONVERTIMOS EL PUNTO A COMA ANTES DE GUARDAR
+      Tasa: tasa.toFixed(4).toString().replace('.', ','), 
+      TotalUSD: totalUSD.toFixed(2).toString().replace('.', ','),
+      TotalBS: totalBS.toFixed(2).toString().replace('.', ',')
     });
   } catch (error: any) { console.error('Error historial:', error); }
 };
 
-router.get('/', async (req, res) => {
+router.get('/', async (req, res) => { /* Lo mismo de antes */
   try {
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
@@ -81,7 +75,7 @@ router.get('/', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error al leer inventario' }); }
 });
 
-router.post('/cargar', async (req, res) => {
+router.post('/cargar', async (req, res) => { /* Lo mismo de antes */
   try {
     const { codigo, proveedor, nombre, marca, estante, costo, venta, cantidad } = req.body;
     const sheet = await getSheet('Inventario');
@@ -110,7 +104,7 @@ router.post('/cargar', async (req, res) => {
   } catch (error) { res.status(500).json({ error: 'Error al cargar' }); }
 });
 
-router.post('/vender', async (req, res) => {
+router.post('/vender', async (req, res) => { /* Lo mismo de antes */
   try {
     const { codigo, cantidad, precioManual, pagos } = req.body; 
     const sheet = await getSheet('Inventario');
@@ -128,7 +122,7 @@ router.post('/vender', async (req, res) => {
     const totalUSD = precioVenta * cantidadVender;
     const tasaBCV = await obtenerTasaBCV();
     const totalBS = totalUSD * tasaBCV;
-    const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2)}`).join(' | ');
+    const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2).replace('.', ',')}`).join(' | ');
 
     producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
     await producto.save();
@@ -140,17 +134,12 @@ router.post('/vender', async (req, res) => {
 
 router.get('/tasa', async (req, res) => { res.json({ tasa: await obtenerTasaBCV() }); });
 
-// RUTA CORREGIDA PARA GUARDAR LA TASA MANUAL
 router.post('/tasa-manual', async (req, res) => {
   const { nuevaTasa } = req.body;
   if (nuevaTasa) {
     try {
-      // 1. Convertimos a string para poder manipularlo
-      const tasaString = nuevaTasa.toString();
-      // 2. Si el usuario escribió "919,8227", lo convertimos a "919.8227"
-      const tasaStringLimpia = tasaString.replace(',', '.');
-      // 3. Lo pasamos a número
-      const tasaNumerica = parseFloat(tasaStringLimpia);
+      // El frontend puede enviar "919,8227" o "919.8227". Lo estandarizamos a número.
+      const tasaNumerica = parseFloat(nuevaTasa.toString().replace(',', '.'));
       
       if (isNaN(tasaNumerica) || tasaNumerica <= 0) {
         return res.status(400).json({ error: 'Tasa inválida' });
@@ -160,10 +149,11 @@ router.post('/tasa-manual', async (req, res) => {
       const rows = await sheetConfig.getRows();
       const fecha = new Date().toLocaleString("es-VE", { timeZone: "America/Caracas" });
       
-      // 4. Forzamos 4 decimales en formato string con punto (ej: "919.8227")
-      const tasaFormateada = tasaNumerica.toFixed(4); 
+      // GUARDAMOS CON COMA PARA QUE GOOGLE SHEETS LO LEA BIEN
+      const tasaFormateada = tasaNumerica.toFixed(4).replace('.', ',');
 
       if (rows.length > 0) {
+        // Si ya existe una fila, la actualizamos (No borra la hoja, solo el dato)
         rows[0].set('TasaManual', tasaFormateada);
         rows[0].set('Fecha', fecha);
         await rows[0].save();
@@ -171,10 +161,8 @@ router.post('/tasa-manual', async (req, res) => {
         await sheetConfig.addRow({ TasaManual: tasaFormateada, Fecha: fecha });
       }
       
-      // 5. Devolvemos el número limpio al frontend
-      res.json({ message: 'Tasa guardada permanentemente', tasa: tasaNumerica });
+      res.json({ message: 'Tasa guardada', tasa: tasaNumerica });
     } catch (error) {
-      console.error(error);
       res.status(500).json({ error: 'Error al guardar en Sheets' });
     }
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
@@ -193,6 +181,7 @@ router.get('/reporte-hoy', async (req, res) => {
       Codigo: row.get('Codigo'),
       Cantidad: row.get('Cantidad'),
       Pago: row.get('Pago'),
+      // Al leer, convertimos la coma de vuelta a punto para que JS haga los cálculos
       TotalUSD: parseFloat((row.get('TotalUSD') || '0').toString().replace(',', '.')),
       TotalBS: parseFloat((row.get('TotalBS') || '0').toString().replace(',', '.'))
     }));
@@ -208,7 +197,7 @@ router.get('/reporte-hoy', async (req, res) => {
       pagosArray.forEach((pagoStr: string) => {
         const [metodo, montoStr] = pagoStr.split(': $');
         if (metodo && montoStr) {
-          const montoUSD = parseFloat(montoStr);
+          const montoUSD = parseFloat(montoStr.replace(',', '.'));
           if (!metodosMap[metodo]) metodosMap[metodo] = { usd: 0, bs: 0 };
           metodosMap[metodo].usd += montoUSD;
           metodosMap[metodo].bs += (montoUSD * tasaHoy);

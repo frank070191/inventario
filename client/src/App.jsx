@@ -1,16 +1,14 @@
 import { useState, useEffect } from 'react';
 import './App.css';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 
 const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario'; // Asegúrate de que sea tu URL
 const METODOS_PAGO = ["T. Débito Bancamiga", "T. Crédito Banca", "PM Empresa", "PM Persona", "Biopago", "Transf Vzla", "Transf. Bancamiga", "T. Débito BNC", "T. Crédito BNC", "Cashea"];
 
-// Función para formatear números (Ej: 12345.67 -> 12.345,67)
 const formatoMoneda = (numero) => {
-  if (isNaN(numero)) return '0,00';
-  return new Intl.NumberFormat('es-VE', {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  }).format(numero);
+  if (isNaN(numero) || numero === null) return '0,00';
+  return new Intl.NumberFormat('es-VE', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(numero);
 };
 
 function App() {
@@ -27,7 +25,6 @@ function App() {
   const [venta, setVenta] = useState({ codigo: '', cantidad: '', precioManual: '' });
   const [infoVenta, setInfoVenta] = useState(null);
   const [pagos, setPagos] = useState([{ metodo: METODOS_PAGO[0], monto: '' }]);
-
   const [reporte, setReporte] = useState(null);
 
   const consultar = async () => {
@@ -43,8 +40,6 @@ function App() {
       const res = await fetch(`${API_URL}/tasa`);
       const data = await res.json();
       setTasa(data.tasa);
-      // Reemplazamos el punto por coma para mostrarlo bonito en el input
-      setTasaManualInput(data.tasa.toString().replace('.', ','));
     } catch (error) { console.error('Error tasa'); }
   };
 
@@ -58,8 +53,11 @@ function App() {
 
   const guardarTasaManual = async () => {
     try {
+      // Enviamos el texto exacto que el usuario escribió (con coma o punto)
       const res = await fetch(`${API_URL}/tasa-manual`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ nuevaTasa: tasaManualInput })
+        method: 'POST', 
+        headers: { 'Content-Type': 'application/json' }, 
+        body: JSON.stringify({ nuevaTasa: tasaManualInput })
       });
       const data = await res.json();
       if (res.ok) {
@@ -75,6 +73,7 @@ function App() {
   useEffect(() => { consultar(); obtenerTasa(); }, []);
   useEffect(() => { if (vista === 'reporte') generarReporte(); }, [vista]);
 
+  // --- LÓGICA DE CÁLCULO Y DEMÁS (Igual que antes) ---
   const handleCodigoCargaChange = (e) => {
     const codigo = e.target.value;
     const prod = productos.find(p => p.Codigo === codigo);
@@ -126,14 +125,49 @@ function App() {
     } catch (error) { setMensaje('Error al vender.'); }
   };
 
-  const productosFiltrados = productos.filter(p => p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase()));
+  const descargarPDF = () => {
+    if (!reporte) return;
+    const doc = new jsPDF();
+    
+    doc.text('Reporte de Ventas del Día', 14, 15);
+    doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 22);
+    doc.text(`Total ($): $${formatoMoneda(reporte.granTotalUSD)}`, 14, 29);
+    doc.text(`Total (Bs): Bs. ${formatoMoneda(reporte.granTotalBS)}`, 14, 36);
 
+    const pagosData = Object.entries(reporte.desglosePagos).map(([metodo, montos]) => [
+      metodo, `$${formatoMoneda(montos.usd)}`, `Bs. ${formatoMoneda(montos.bs)}`
+    ]);
+
+    autoTable(doc, {
+      startY: 45,
+      head: [['Método de Pago', 'Monto ($)', 'Monto (Bs)']],
+      body: pagosData,
+      theme: 'grid',
+      styles: { fontSize: 10 },
+    });
+
+    const ventasData = reporte.ventas.map(v => [
+      v.Fecha.split(', ')[1], v.Codigo, v.Cantidad, `$${formatoMoneda(v.TotalUSD)}`
+    ]);
+
+    autoTable(doc, {
+      startY: doc.lastAutoTable.finalY + 10,
+      head: [['Hora', 'Código', 'Cantidad', 'Total $']],
+      body: ventasData,
+      theme: 'grid',
+      styles: { fontSize: 10 },
+    });
+
+    doc.save(`Reporte_Ventas_${new Date().toISOString().slice(0,10)}.pdf`);
+  };
+
+  const productosFiltrados = productos.filter(p => p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase()));
   const precioVentaActual = parseFloat(venta.precioManual) || parseFloat(infoVenta?.Venta || 0);
   const totalVentaActual = precioVentaActual * (parseInt(venta.cantidad) || 0);
   const totalPagado = pagos.reduce((acc, pago) => acc + (parseFloat(pago.monto) || 0), 0);
   const restante = totalVentaActual - totalPagado;
 
-  // Estilos inline para forzar el diseño 3D y responsive
+  // Estilos
   const styleBtnBase = { padding: '12px 24px', fontSize: '16px', fontWeight: 'bold', color: 'white', border: 'none', borderRadius: '8px', cursor: 'pointer', textTransform: 'uppercase', letterSpacing: '0.5px', flex: 1, minWidth: '45%', marginBottom: '5px' };
   const styleBtnBlue = { ...styleBtnBase, backgroundColor: '#007bff', boxShadow: '0 6px 0 #0056b3' };
   const styleBtnGreen = { ...styleBtnBase, backgroundColor: '#28a745', boxShadow: '0 6px 0 #1e7e34' };
@@ -150,7 +184,6 @@ function App() {
           <button onClick={() => setEditandoTasa(true)} style={{ marginLeft: '10px', padding: '5px', fontSize: '12px', cursor: 'pointer', borderRadius: '5px', border: '1px solid #ccc' }}>✏️</button>
         ) : (
           <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'center', gap: '5px' }}>
-            {/* CAMBIAMOS A type="text" PARA QUE ACEPTE LA COMA */}
             <input type="text" value={tasaManualInput} onChange={e => setTasaManualInput(e.target.value)} style={{ padding: '5px', width: '100px', borderRadius: '5px', border: '1px solid #ccc' }} />
             <button onClick={guardarTasaManual} style={{ padding: '5px 10px', backgroundColor: '#28a745', color: 'white', border: 'none', borderRadius: '5px' }}>OK</button>
             <button onClick={() => setEditandoTasa(false)} style={{ padding: '5px 10px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px' }}>X</button>
@@ -158,7 +191,6 @@ function App() {
         )}
       </div>
 
-      {/* MENÚ CON ESTILOS INLINE FORZADOS */}
       <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', flexWrap: 'wrap', marginBottom: '20px' }}>
         <button onClick={() => setVista('consultar')} style={styleBtnBlue}>Consultar</button>
         <button onClick={() => setVista('cargar')} style={styleBtnGreen}>Cargar</button>
@@ -168,7 +200,7 @@ function App() {
 
       {mensaje && <div style={{ backgroundColor: '#d1ecf1', color: '#0c5460', padding: '15px', borderRadius: '8px', textAlign: 'center', fontWeight: 'bold', marginBottom: '20px' }}>{mensaje}</div>}
 
-      {vista === 'consultar' && (
+      {vista === 'consultar' && ( /* ... Lo mismo de antes ... */ 
         <div>
           <input type="text" placeholder="🔍 Buscar producto..." value={busqueda} onChange={e => setBusqueda(e.target.value)} style={{ width: '100%', padding: '12px', marginBottom: '20px', borderRadius: '8px', border: '1px solid #ccc', boxSizing: 'border-box' }}/>
           <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
@@ -200,7 +232,7 @@ function App() {
         </div>
       )}
 
-      {vista === 'cargar' && (
+      {vista === 'cargar' && ( /* ... Lo mismo de antes ... */
         <form onSubmit={cargarProducto} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', maxWidth: '500px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <h2 style={{textAlign: 'center', color: '#2c3e50'}}>Ingresar Mercancía</h2>
           <input placeholder="Código" value={carga.codigo} onChange={handleCodigoCargaChange} required style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
@@ -217,7 +249,7 @@ function App() {
         </form>
       )}
 
-      {vista === 'vender' && (
+      {vista === 'vender' && ( /* ... Lo mismo de antes ... */
         <form onSubmit={venderProducto} style={{ backgroundColor: 'white', padding: '20px', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', maxWidth: '500px', margin: '0 auto', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <h2 style={{textAlign: 'center', color: '#2c3e50'}}>Registrar Venta</h2>
           <input placeholder="Código del Producto" value={venta.codigo} onChange={handleCodigoVentaChange} required style={{padding: '10px', borderRadius: '5px', border: '1px solid #ccc'}} />
@@ -271,7 +303,15 @@ function App() {
 
       {vista === 'reporte' && (
         <div>
-          <h2 style={{textAlign: 'center', color: '#2c3e50'}}>Reporte de Ventas de Hoy</h2>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h2 style={{color: '#2c3e50', margin: 0}}>Reporte de Ventas de Hoy</h2>
+            {reporte && (
+              <button onClick={descargarPDF} style={{ padding: '10px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>
+                📄 Descargar PDF
+              </button>
+            )}
+          </div>
+          
           {!reporte ? (
             <p style={{textAlign: 'center'}}>Cargando reporte...</p>
           ) : (
