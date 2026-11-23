@@ -1,5 +1,4 @@
 import { useState, useEffect } from 'react';
-import './App.css';
 
 const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario'; // Asegúrate de que sea tu URL
 const METODOS_PAGO = ["T. Débito Bancamiga", "T. Crédito Banca", "PM Empresa", "PM Persona", "Biopago", "Transf Vzla", "Transf. Bancamiga", "T. Débito BNC", "T. Crédito BNC", "Cashea"];
