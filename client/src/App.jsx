@@ -27,7 +27,6 @@ function App() {
   const [productoActual, setProductoActual] = useState({ codigo: '', cantidad: '', precio: '' });
   const [pagos, setPagos] = useState([{ metodo: METODOS_PAGO[0], monto: '' }]);
 
-  // --- REPORTES ---
   const [reporte, setReporte] = useState(null);
   const [fechaReporte, setFechaReporte] = useState(new Date().toISOString().split('T')[0]);
 
@@ -47,7 +46,6 @@ function App() {
     } catch (error) { console.error('Error tasa'); }
   };
 
-  // CORREGIDO: Ahora envía la fecha como parámetro
   const generarReporte = async (fecha) => {
     try {
       const res = await fetch(`${API_URL}/reporte?fecha=${fecha}`);
@@ -72,7 +70,6 @@ function App() {
 
   useEffect(() => { consultar(); obtenerTasa(); }, []);
   
-  // Cuando se entra a la vista de reporte, se genera con la fecha actual
   useEffect(() => { 
     if (vista === 'reporte') generarReporte(fechaReporte); 
   }, [vista]);
@@ -168,7 +165,6 @@ function App() {
     } catch (error) { setMensaje('Error al vender.'); }
   };
 
-  // --- CÁLCULOS DEL REPORTE ---
   let totalPagosUSD = 0;
   let totalPagosBS = 0;
   if (reporte && reporte.desglosePagos) {
@@ -367,7 +363,7 @@ function App() {
                 value={fechaReporte} 
                 onChange={e => {
                   setFechaReporte(e.target.value);
-                  generarReporte(e.target.value); // Recarga automáticamente al cambiar fecha
+                  generarReporte(e.target.value);
                 }} 
                 style={{ padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }}
               />
@@ -378,7 +374,6 @@ function App() {
           {!reporte ? ( <p style={{textAlign: 'center'}}>Cargando reporte...</p> ) : (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-                {/* AHORA LOS TOTALES SE CALCULAN DE LA TABLA DE PAGOS */}
                 <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
                   <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Pagado ($)</p>
                   <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>${formatoMoneda(totalPagosUSD)}</p>
