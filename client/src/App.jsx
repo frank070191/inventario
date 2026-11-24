@@ -31,7 +31,7 @@ function App() {
 
   const consultar = async () => {
     try {
-    |   const res = await fetch(API_URL);
+      const res = await fetch(API_URL);
       const data = await res.json();
       setProductos(data);
     } catch (error) { setMensaje('Error al consultar.'); }
@@ -95,7 +95,6 @@ function App() {
     const codigo = e.target.value;
     const prod = productos.find(p => p.Codigo === codigo);
     if (prod) {
-      // Forzamos que el precio se llene aquí
       setProductoActual({ codigo, cantidad: '', precio: prod.Venta ? prod.Venta.toString() : '' });
     } else {
       setProductoActual({ codigo, cantidad: '', precio: '' });
