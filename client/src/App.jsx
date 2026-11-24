@@ -29,6 +29,9 @@ function App() {
 
   const [reporte, setReporte] = useState(null);
   const [fechaReporte, setFechaReporte] = useState(new Date().toISOString().split('T')[0]);
+  
+  // NUEVO ESTADO: Para cambiar entre el reporte monetario y el de productos
+  const [tipoReporte, setTipoReporte] = useState('monetario');
 
   const consultar = async () => {
     try {
@@ -174,27 +177,38 @@ function App() {
     });
   }
 
+  // Lógica para el reporte de productos (cruzando con la lista de productos)
+  const ventasConDetalles = reporte && reporte.ventas ? reporte.ventas.map(venta => {
+    const prodInfo = productos.find(p => p.Codigo === venta.Codigo);
+    return {
+      ...venta,
+      Nombre: prodInfo ? prodInfo.Nombre : 'Desconocido',
+      Proveedor: prodInfo ? prodInfo.Proveedor : 'Desconocido'
+    };
+  }) : [];
+
   const descargarPDF = () => {
     if (!reporte) return;
     const doc = new jsPDF();
     doc.text('Reporte de Ventas', 14, 15);
     doc.text(`Fecha: ${fechaReporte.split('-').reverse().join('/')}`, 14, 22);
-    doc.text(`Total ($): $${formatoMoneda(totalPagosUSD)}`, 14, 29);
-    doc.text(`Total (Bs): Bs. ${formatoMoneda(totalPagosBS)}`, 14, 36);
 
-    const pagosData = Object.entries(reporte.desglosePagos).map(([metodo, datos]) => [
-      metodo, datos.transacciones.toString(), `$${formatoMoneda(datos.usd)}`, `Bs. ${formatoMoneda(datos.bs)}`
-    ]);
+    if (tipoReporte === 'monetario') {
+      doc.text(`Total ($): $${formatoMoneda(totalPagosUSD)}`, 14, 29);
+      doc.text(`Total (Bs): Bs. ${formatoMoneda(totalPagosBS)}`, 14, 36);
 
-    autoTable(doc, { startY: 45, head: [['Método', 'Transacciones', 'Monto ($)', 'Monto (Bs)']], body: pagosData, theme: 'grid' });
+      const pagosData = Object.entries(reporte.desglosePagos).map(([metodo, datos]) => [
+        metodo, datos.transacciones.toString(), `$${formatoMoneda(datos.usd)}`, `Bs. ${formatoMoneda(datos.bs)}`
+      ]);
+      autoTable(doc, { startY: 45, head: [['Método', 'Transacciones', 'Monto ($)', 'Monto (Bs)']], body: pagosData, theme: 'grid' });
+    } else {
+      const productosData = ventasConDetalles.map(v => [
+        v.Codigo, v.Nombre, v.Proveedor, v.Cantidad
+      ]);
+      autoTable(doc, { startY: 29, head: [['Código', 'Nombre', 'Proveedor', 'Cantidad']], body: productosData, theme: 'grid' });
+    }
 
-    const ventasData = reporte.ventas.map(v => [
-      v.Fecha.split(', ')[1], v.Codigo, v.Cantidad, `$${formatoMoneda(v.TotalUSD)}`
-    ]);
-
-    autoTable(doc, { startY: doc.lastAutoTable.finalY + 10, head: [['Hora', 'Código', 'Cantidad', 'Total $']], body: ventasData, theme: 'grid' });
-
-    doc.save(`Reporte_${fechaReporte}.pdf`);
+    doc.save(`Reporte_${tipoReporte}_${fechaReporte}.pdf`);
   };
 
   const totalVentaActual = carrito.reduce((acc, item) => acc + (parseFloat(item.precio) * parseInt(item.cantidad)), 0);
@@ -355,9 +369,9 @@ function App() {
       {vista === 'reporte' && (
         <div>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-            <h2 style={{color: '#2c3e50', margin: 0}}>Reporte de Ventas</h2>
+            <h2 style={{color: '#2c3e50', margin: 0}}>Reportes</h2>
             
-            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap' }}>
               <input 
                 type="date" 
                 value={fechaReporte} 
@@ -370,63 +384,82 @@ function App() {
               {reporte && <button onClick={descargarPDF} style={{ padding: '10px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>📄 PDF</button>}
             </div>
           </div>
+
+          {/* SELECTOR DE TIPO DE REPORTE */}
+          <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', justifyContent: 'center' }}>
+            <button onClick={() => setTipoReporte('monetario')} style={{ padding: '10px 20px', borderRadius: '5px', border: 'none', backgroundColor: tipoReporte === 'monetario' ? '#2c3e50' : '#ccc', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>Reporte Monetario</button>
+            <button onClick={() => setTipoReporte('productos')} style={{ padding: '10px 20px', borderRadius: '5px', border: 'none', backgroundColor: tipoReporte === 'productos' ? '#2c3e50' : '#ccc', color: 'white', cursor: 'pointer', fontWeight: 'bold' }}>Reporte de Productos</button>
+          </div>
           
           {!reporte ? ( <p style={{textAlign: 'center'}}>Cargando reporte...</p> ) : (
             <>
-              <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
-                <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Pagado ($)</p>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>${formatoMoneda(totalPagosUSD)}</p>
-                </div>
-                <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Pagado (Bs)</p>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>Bs. {formatoMoneda(totalPagosBS)}</p>
-                </div>
-              </div>
-              <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto', marginBottom: '20px' }}>
-                <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Pagos Recibidos</h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '350px' }}>
-                  <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
-                    <tr>
-                      <th style={{ textAlign: 'left', padding: '10px' }}>Método</th>
-                      <th style={{ textAlign: 'center', padding: '10px' }}>Transacciones</th>
-                      <th style={{ textAlign: 'right', padding: '10px' }}>Monto ($)</th>
-                      <th style={{ textAlign: 'right', padding: '10px' }}>Monto (Bs)</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(reporte.desglosePagos).map(([metodo, datos], i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{metodo}</td>
-                        <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px', padding: '10px', backgroundColor: '#f1f1f1' }}>{datos.transacciones}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(datos.usd)}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', color: '#28a745', padding: '10px' }}>Bs. {formatoMoneda(datos.bs)}</td>
+              {tipoReporte === 'monetario' ? (
+                <>
+                  <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                    <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Pagado ($)</p>
+                      <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>${formatoMoneda(totalPagosUSD)}</p>
+                    </div>
+                    <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
+                      <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Pagado (Bs)</p>
+                      <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>Bs. {formatoMoneda(totalPagosBS)}</p>
+                    </div>
+                  </div>
+                  <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto', marginBottom: '20px' }}>
+                    <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Pagos Recibidos</h3>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '350px' }}>
+                      <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
+                        <tr>
+                          <th style={{ textAlign: 'left', padding: '10px' }}>Método</th>
+                          <th style={{ textAlign: 'center', padding: '10px' }}>Transacciones</th>
+                          <th style={{ textAlign: 'right', padding: '10px' }}>Monto ($)</th>
+                          <th style={{ textAlign: 'right', padding: '10px' }}>Monto (Bs)</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {Object.entries(reporte.desglosePagos).map(([metodo, datos], i) => (
+                          <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                            <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{metodo}</td>
+                            <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px', padding: '10px', backgroundColor: '#f1f1f1' }}>{datos.transacciones}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>${formatoMoneda(datos.usd)}</td>
+                            <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', color: '#28a745', padding: '10px' }}>Bs. {formatoMoneda(datos.bs)}</td>
+                          </tr>
+                        ))}
+                        {Object.keys(reporte.desglosePagos).length === 0 && (
+                          <tr><td colSpan="4" style={{textAlign: 'center', padding: '10px'}}>No hay pagos en esta fecha.</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              ) : (
+                <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
+                  <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Productos Vendidos</h3>
+                  <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '400px' }}>
+                    <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
+                      <tr>
+                        <th style={{ textAlign: 'left', padding: '10px' }}>Código</th>
+                        <th style={{ textAlign: 'left', padding: '10px' }}>Nombre</th>
+                        <th style={{ textAlign: 'left', padding: '10px' }}>Proveedor</th>
+                        <th style={{ textAlign: 'center', padding: '10px' }}>Cantidad</th>
                       </tr>
-                    ))}
-                    {Object.keys(reporte.desglosePagos).length === 0 && (
-                      <tr><td colSpan="4" style={{textAlign: 'center', padding: '10px'}}>No hay ventas en esta fecha.</td></tr>
-                    )}
-                  </tbody>
-                </table>
-              </div>
-              <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto' }}>
-                <h3 style={{ padding: '10px', margin: 0, backgroundColor: '#f8f9fa', fontSize: '16px' }}>Detalle de Ventas</h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse', minWidth: '400px' }}>
-                  <thead style={{ backgroundColor: '#2c3e50', color: 'white' }}>
-                    <tr><th style={{ textAlign: 'left', padding: '10px' }}>Hora</th><th style={{ textAlign: 'left', padding: '10px' }}>Código</th><th style={{ textAlign: 'center', padding: '10px' }}>Cant</th><th style={{ textAlign: 'right', padding: '10px' }}>Total $</th></tr>
-                  </thead>
-                  <tbody>
-                    {reporte.ventas.map((v, i) => (
-                      <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
-                        <td style={{ textAlign: 'left', fontSize: '11px', padding: '10px' }}>{v.Fecha.split(', ')[1]}</td>
-                        <td style={{ textAlign: 'left', fontSize: '11px', padding: '10px' }}>{v.Codigo}</td>
-                        <td style={{ textAlign: 'center', fontSize: '11px', padding: '10px' }}>{v.Cantidad}</td>
-                        <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '11px', padding: '10px' }}>${formatoMoneda(v.TotalUSD)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {ventasConDetalles.map((v, i) => (
+                        <tr key={i} style={{ borderBottom: '1px solid #eee' }}>
+                          <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{v.Codigo}</td>
+                          <td style={{ textAlign: 'left', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>{v.Nombre}</td>
+                          <td style={{ textAlign: 'left', fontSize: '12px', padding: '10px' }}>{v.Proveedor}</td>
+                          <td style={{ textAlign: 'center', fontWeight: 'bold', fontSize: '12px', padding: '10px' }}>{v.Cantidad}</td>
+                        </tr>
+                      ))}
+                      {ventasConDetalles.length === 0 && (
+                        <tr><td colSpan="4" style={{textAlign: 'center', padding: '10px'}}>No hay ventas de productos en esta fecha.</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </>
           )}
         </div>
