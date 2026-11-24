@@ -104,7 +104,6 @@ router.post('/vender', async (req, res) => {
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
     
-    // Validar stock
     for (const item of carrito) {
       const producto = rows.find((row: any) => row.get('CODIGO') === item.codigo);
       if (!producto) return res.status(404).json({ error: `Producto ${item.codigo} no encontrado` });
@@ -117,7 +116,6 @@ router.post('/vender', async (req, res) => {
     const tasaBCV = await obtenerTasaBCV();
     let granTotalUSD = 0;
     let granTotalBS = 0;
-    // Creamos el resumen de pago UNA SOLA VEZ para esta venta
     const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2).replace('.', ',')}`).join(' | ');
 
     for (let i = 0; i < carrito.length; i++) {
@@ -136,8 +134,7 @@ router.post('/vender', async (req, res) => {
       producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
       await producto.save();
 
-      // EL TRUCO: Solo guardamos el pago en la PRIMERA fila del carrito
-      // En las demás filas ponemos 'N/A' para que no se duplique la suma en el reporte
+      // Solo guardamos el pago en la PRIMERA fila, el resto es N/A
       const pagoParaEstaFila = i === 0 ? pagoResumen : 'N/A';
 
       await guardarHistorial('Venta', item.codigo, item.cantidad, pagoParaEstaFila, tasaBCV, totalUSD, totalBS);
@@ -190,6 +187,7 @@ router.get('/reporte', async (req, res) => {
     
     const fechaBuscar = fecha ? fecha.split('-').reverse().join('/') : new Date().toLocaleDateString("es-VE", { timeZone: "America/Caracas" });
     
+    // Filtramos ventas del día
     const ventasFiltradas = rows.filter((row: any) => {
       return (row.get('Tipo') || '') === 'Venta' && (row.get('Fecha') || '').startsWith(fechaBuscar);
     }).map((row: any) => ({
@@ -208,8 +206,8 @@ router.get('/reporte', async (req, res) => {
     const tasaHoy = await obtenerTasaBCV();
 
     ventasFiltradas.forEach((venta: any) => {
-      // Solo procesamos los pagos que no sean 'N/A'
-      if (venta.Pago !== 'N/A') {
+      // 🚨 FILTRO CLAVE: Si el pago es 'N/A', lo ignoramos para no duplicar
+      if (venta.Pago && venta.Pago !== 'N/A' && venta.Pago.trim() !== '') {
         const pagosArray = venta.Pago.split(' | ');
         pagosArray.forEach((pagoStr: string) => {
           const [metodo, montoStr] = pagoStr.split(': $');
