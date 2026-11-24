@@ -27,7 +27,9 @@ function App() {
   const [productoActual, setProductoActual] = useState({ codigo: '', cantidad: '', precio: '' });
   const [pagos, setPagos] = useState([{ metodo: METODOS_PAGO[0], monto: '' }]);
 
+  // --- REPORTES ---
   const [reporte, setReporte] = useState(null);
+  const [fechaReporte, setFechaReporte] = useState(new Date().toISOString().split('T')[0]);
 
   const consultar = async () => {
     try {
@@ -45,9 +47,10 @@ function App() {
     } catch (error) { console.error('Error tasa'); }
   };
 
-  const generarReporte = async () => {
+  // CORREGIDO: Ahora envía la fecha como parámetro
+  const generarReporte = async (fecha) => {
     try {
-      const res = await fetch(`${API_URL}/reporte-hoy`);
+      const res = await fetch(`${API_URL}/reporte?fecha=${fecha}`);
       const data = await res.json();
       setReporte(data);
     } catch (error) { setMensaje('Error al generar reporte'); }
@@ -68,7 +71,11 @@ function App() {
   };
 
   useEffect(() => { consultar(); obtenerTasa(); }, []);
-  useEffect(() => { if (vista === 'reporte') generarReporte(); }, [vista]);
+  
+  // Cuando se entra a la vista de reporte, se genera con la fecha actual
+  useEffect(() => { 
+    if (vista === 'reporte') generarReporte(fechaReporte); 
+  }, [vista]);
 
   const handleCodigoCargaChange = (e) => {
     const codigo = e.target.value;
@@ -161,19 +168,29 @@ function App() {
     } catch (error) { setMensaje('Error al vender.'); }
   };
 
+  // --- CÁLCULOS DEL REPORTE ---
+  let totalPagosUSD = 0;
+  let totalPagosBS = 0;
+  if (reporte && reporte.desglosePagos) {
+    Object.values(reporte.desglosePagos).forEach((datos) => {
+      totalPagosUSD += datos.usd;
+      totalPagosBS += datos.bs;
+    });
+  }
+
   const descargarPDF = () => {
     if (!reporte) return;
     const doc = new jsPDF();
-    doc.text('Reporte de Ventas del Día', 14, 15);
-    doc.text(`Fecha: ${new Date().toLocaleDateString()}`, 14, 22);
-    doc.text(`Total ($): $${formatoMoneda(reporte.granTotalUSD)}`, 14, 29);
-    doc.text(`Total (Bs): Bs. ${formatoMoneda(reporte.granTotalBS)}`, 14, 36);
+    doc.text('Reporte de Ventas', 14, 15);
+    doc.text(`Fecha: ${fechaReporte.split('-').reverse().join('/')}`, 14, 22);
+    doc.text(`Total ($): $${formatoMoneda(totalPagosUSD)}`, 14, 29);
+    doc.text(`Total (Bs): Bs. ${formatoMoneda(totalPagosBS)}`, 14, 36);
 
     const pagosData = Object.entries(reporte.desglosePagos).map(([metodo, datos]) => [
       metodo, datos.transacciones.toString(), `$${formatoMoneda(datos.usd)}`, `Bs. ${formatoMoneda(datos.bs)}`
     ]);
 
-    autoTable(doc, { startY: 45, head: [['Método de Pago', 'Transacciones', 'Monto ($)', 'Monto (Bs)']], body: pagosData, theme: 'grid' });
+    autoTable(doc, { startY: 45, head: [['Método', 'Transacciones', 'Monto ($)', 'Monto (Bs)']], body: pagosData, theme: 'grid' });
 
     const ventasData = reporte.ventas.map(v => [
       v.Fecha.split(', ')[1], v.Codigo, v.Cantidad, `$${formatoMoneda(v.TotalUSD)}`
@@ -181,7 +198,7 @@ function App() {
 
     autoTable(doc, { startY: doc.lastAutoTable.finalY + 10, head: [['Hora', 'Código', 'Cantidad', 'Total $']], body: ventasData, theme: 'grid' });
 
-    doc.save(`Reporte_Ventas_${new Date().toISOString().slice(0,10)}.pdf`);
+    doc.save(`Reporte_${fechaReporte}.pdf`);
   };
 
   const totalVentaActual = carrito.reduce((acc, item) => acc + (parseFloat(item.precio) * parseInt(item.cantidad)), 0);
@@ -341,20 +358,34 @@ function App() {
 
       {vista === 'reporte' && (
         <div>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h2 style={{color: '#2c3e50', margin: 0}}>Reporte de Ventas de Hoy</h2>
-            {reporte && <button onClick={descargarPDF} style={{ padding: '10px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>📄 Descargar PDF</button>}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+            <h2 style={{color: '#2c3e50', margin: 0}}>Reporte de Ventas</h2>
+            
+            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+              <input 
+                type="date" 
+                value={fechaReporte} 
+                onChange={e => {
+                  setFechaReporte(e.target.value);
+                  generarReporte(e.target.value); // Recarga automáticamente al cambiar fecha
+                }} 
+                style={{ padding: '8px', borderRadius: '5px', border: '1px solid #ccc' }}
+              />
+              {reporte && <button onClick={descargarPDF} style={{ padding: '10px 15px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>📄 PDF</button>}
+            </div>
           </div>
+          
           {!reporte ? ( <p style={{textAlign: 'center'}}>Cargando reporte...</p> ) : (
             <>
               <div style={{ display: 'flex', justifyContent: 'space-around', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                {/* AHORA LOS TOTALES SE CALCULAN DE LA TABLA DE PAGOS */}
                 <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total ($)</p>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>${formatoMoneda(reporte.granTotalUSD)}</p>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Pagado ($)</p>
+                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>${formatoMoneda(totalPagosUSD)}</p>
                 </div>
                 <div style={{ backgroundColor: '#e9ecef', padding: '15px', borderRadius: '8px', borderLeft: '5px solid #28a745', textAlign: 'center', flex: 1, minWidth: '150px' }}>
-                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total (Bs)</p>
-                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>Bs. {formatoMoneda(reporte.granTotalBS)}</p>
+                  <p style={{ margin: 0, fontSize: '12px', color: '#666' }}>Total Pagado (Bs)</p>
+                  <p style={{ margin: 0, fontSize: '20px', fontWeight: 'bold', color: '#28a745' }}>Bs. {formatoMoneda(totalPagosBS)}</p>
                 </div>
               </div>
               <div style={{ backgroundColor: 'white', borderRadius: '10px', boxShadow: '0 4px 15px rgba(0,0,0,0.1)', overflowX: 'auto', marginBottom: '20px' }}>
@@ -377,6 +408,9 @@ function App() {
                         <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '12px', color: '#28a745', padding: '10px' }}>Bs. {formatoMoneda(datos.bs)}</td>
                       </tr>
                     ))}
+                    {Object.keys(reporte.desglosePagos).length === 0 && (
+                      <tr><td colSpan="4" style={{textAlign: 'center', padding: '10px'}}>No hay ventas en esta fecha.</td></tr>
+                    )}
                   </tbody>
                 </table>
               </div>
