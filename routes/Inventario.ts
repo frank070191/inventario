@@ -104,6 +104,7 @@ router.post('/vender', async (req, res) => {
     const sheet = await getSheet('Inventario');
     const rows = await sheet.getRows();
     
+    // Validar stock
     for (const item of carrito) {
       const producto = rows.find((row: any) => row.get('CODIGO') === item.codigo);
       if (!producto) return res.status(404).json({ error: `Producto ${item.codigo} no encontrado` });
@@ -116,9 +117,11 @@ router.post('/vender', async (req, res) => {
     const tasaBCV = await obtenerTasaBCV();
     let granTotalUSD = 0;
     let granTotalBS = 0;
+    // Creamos el resumen de pago UNA SOLA VEZ para esta venta
     const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2).replace('.', ',')}`).join(' | ');
 
-    for (const item of carrito) {
+    for (let i = 0; i < carrito.length; i++) {
+      const item = carrito[i];
       const producto = rows.find((row: any) => row.get('CODIGO') === item.codigo);
       const precioVenta = parseFloat(item.precio) || parseFloat(producto.get('VENTA') || '0');
       const cantidadVender = parseInt(item.cantidad);
@@ -133,7 +136,11 @@ router.post('/vender', async (req, res) => {
       producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
       await producto.save();
 
-      await guardarHistorial('Venta', item.codigo, item.cantidad, pagoResumen, tasaBCV, totalUSD, totalBS);
+      // EL TRUCO: Solo guardamos el pago en la PRIMERA fila del carrito
+      // En las demás filas ponemos 'N/A' para que no se duplique la suma en el reporte
+      const pagoParaEstaFila = i === 0 ? pagoResumen : 'N/A';
+
+      await guardarHistorial('Venta', item.codigo, item.cantidad, pagoParaEstaFila, tasaBCV, totalUSD, totalBS);
     }
     
     res.json({ message: 'Venta realizada con éxito', totalUSD: granTotalUSD, totalBS: granTotalBS, tasaBCV });
@@ -175,12 +182,9 @@ router.post('/tasa-manual', async (req, res) => {
   } else { res.status(400).json({ error: 'Tasa inválida' }); }
 });
 
-// --- REPORTE POR FECHAS (CORREGIDO) ---
 router.get('/reporte', async (req, res) => {
   try {
-    // Aquí forzamos a TypeScript a tratar 'fecha' como un string
     const fecha = req.query.fecha as string | undefined;
-    
     const sheetHistorial = await getSheet('Historial');
     const rows = await sheetHistorial.getRows();
     
@@ -204,18 +208,21 @@ router.get('/reporte', async (req, res) => {
     const tasaHoy = await obtenerTasaBCV();
 
     ventasFiltradas.forEach((venta: any) => {
-      const pagosArray = venta.Pago.split(' | ');
-      pagosArray.forEach((pagoStr: string) => {
-        const [metodo, montoStr] = pagoStr.split(': $');
-        if (metodo && montoStr) {
-          const montoUSD = parseFloat(montoStr.replace(',', '.'));
-          if (!metodosMap[metodo]) metodosMap[metodo] = { transacciones: 0, usd: 0, bs: 0 };
-          
-          metodosMap[metodo].transacciones += 1;
-          metodosMap[metodo].usd += montoUSD;
-          metodosMap[metodo].bs += (montoUSD * tasaHoy);
-        }
-      });
+      // Solo procesamos los pagos que no sean 'N/A'
+      if (venta.Pago !== 'N/A') {
+        const pagosArray = venta.Pago.split(' | ');
+        pagosArray.forEach((pagoStr: string) => {
+          const [metodo, montoStr] = pagoStr.split(': $');
+          if (metodo && montoStr) {
+            const montoUSD = parseFloat(montoStr.replace(',', '.'));
+            if (!metodosMap[metodo]) metodosMap[metodo] = { transacciones: 0, usd: 0, bs: 0 };
+            
+            metodosMap[metodo].transacciones += 1;
+            metodosMap[metodo].usd += montoUSD;
+            metodosMap[metodo].bs += (montoUSD * tasaHoy);
+          }
+        });
+      }
     });
 
     res.json({ ventas: ventasFiltradas, granTotalUSD, granTotalBS, desglosePagos: metodosMap });
