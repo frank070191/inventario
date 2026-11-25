@@ -1,42 +1,206 @@
 import express from 'express';
+import https from 'https';
 import { getSheet } from '../config/sheet.config.js';
 
 const router = express.Router();
 
-const obtenerTasaManualGuardada = async () => {
+const ZONA = 'America/Caracas';
+const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36';
+
+/* =====================================================================
+   UTILIDADES DE FECHA Y NÚMEROS
+   ===================================================================== */
+
+// Fecha de hoy en Venezuela con formato AAAA-MM-DD
+const hoyISO = () => new Date().toLocaleDateString('en-CA', { timeZone: ZONA });
+
+// Convierte "24/11/2026, 10:39:00 p. m." (o "24/11/2026") en "2026-11-24"
+const fechaAISO = (texto: string): string | null => {
+  const m = (texto || '').match(/(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (!m) return null;
+  return `${m[3]}-${m[2].padStart(2, '0')}-${m[1].padStart(2, '0')}`;
+};
+
+// Convierte "919,8227" o "919.8227" en número
+const aNumero = (valor: any): number => parseFloat((valor ?? '').toString().replace(',', '.'));
+
+/* =====================================================================
+   TASA BCV
+   Orden de prioridad:
+   1) Tasa manual guardada HOY (si alguien la corrigió a mano ese día)
+   2) Tasa publicada en la página del BCV (se registra sola en la hoja "Tasas")
+   3) Servicio de respaldo
+   4) Última tasa guardada en la hoja "Tasas" (fines de semana, feriados o si todo falla)
+   ===================================================================== */
+
+type ResultadoTasa = { tasa: number; fuente: string; fechaTasa: string };
+type RegistroTasa = { iso: string; tasa: number; fecha: string };
+
+let cacheTasa: { resultado: ResultadoTasa; vence: number } | null = null;
+let calculoEnCurso: Promise<ResultadoTasa> | null = null;
+
+const obtenerTasaManualGuardada = async (): Promise<{ tasa: number; iso: string | null } | null> => {
   try {
     const sheetConfig = await getSheet('Configuracion');
     const rows = await sheetConfig.getRows();
     if (rows.length > 0) {
       const val = rows[0].get('TasaManual');
       if (!val) return null;
-      return parseFloat(val.toString().replace(',', '.'));
+      const tasa = aNumero(val);
+      if (!(tasa > 0)) return null;
+      return { tasa, iso: fechaAISO((rows[0].get('Fecha') || '').toString()) };
     }
     return null;
   } catch (error) { return null; }
 };
 
-const obtenerTasaBCV = async () => {
-  const tasaGuardada = await obtenerTasaManualGuardada();
-  if (tasaGuardada && tasaGuardada > 0) return tasaGuardada;
+const leerHistorialTasas = async (): Promise<RegistroTasa[]> => {
   try {
-    const res = await fetch('https://www.bcv.org.ve/', { headers: { 'User-Agent': 'Mozilla/5.0...' } });
-    const html = await res.text();
-    const match = html.match(/<div[^>]*id="dolar"[^>]*>[\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>/);
-    if (match && match[1]) {
-      const tasaStr = match[1].replace(/\./g, '').replace(',', '.');
-      const tasa = parseFloat(tasaStr);
-      if (tasa > 100 && tasa < 2000) return tasa;
+    const sheetTasas = await getSheet('Tasas');
+    const rows = await sheetTasas.getRows();
+    const lista: RegistroTasa[] = [];
+    for (const r of rows as any[]) {
+      const fecha = (r.get('Fecha') || '').toString();
+      const iso = fechaAISO(fecha);
+      const tasa = aNumero(r.get('Tasa'));
+      if (iso && tasa > 0) lista.push({ iso, tasa, fecha });
     }
-    throw new Error('No match');
-  } catch (error) {
+    return lista;
+  } catch (error) { return []; }
+};
+
+// Devuelve la tasa vigente en una fecha: la del mismo día o, si no hay, la más reciente anterior
+const tasaVigenteEn = (historial: RegistroTasa[], fechaISO: string): RegistroTasa | null => {
+  let mejor: RegistroTasa | null = null;
+  for (const h of historial) {
+    if (h.iso <= fechaISO && (mejor === null || h.iso >= mejor.iso)) mejor = h;
+  }
+  return mejor;
+};
+
+const registrarTasaAutomatica = async (tasa: number, origen: string) => {
+  try {
+    const sheetTasas = await getSheet('Tasas');
+    const fecha = new Date().toLocaleString('es-VE', { timeZone: ZONA });
+    await sheetTasas.addRow({ Fecha: fecha, Tasa: tasa.toFixed(4).replace('.', ','), Usuario: origen });
+  } catch (error) { console.error('Error registrando tasa automática:', error); }
+};
+
+// Descarga con verificación estricta de certificado; si falla (el sitio del BCV a veces
+// tiene problemas de certificado), reintenta sin verificar. Solo se lee una cifra pública
+// y se valida que sea razonable antes de usarla.
+const descargarHTMLConHttps = (url: string): Promise<string> =>
+  new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      { rejectUnauthorized: false, headers: { 'User-Agent': USER_AGENT }, timeout: 10000 },
+      (res) => {
+        let data = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => resolve(data));
+      }
+    );
+    req.on('timeout', () => req.destroy(new Error('timeout')));
+    req.on('error', reject);
+  });
+
+const descargarHTMLBCV = async (): Promise<string> => {
+  const url = 'https://www.bcv.org.ve/';
+  try {
+    const controller = new AbortController();
+    const temporizador = setTimeout(() => controller.abort(), 8000);
     try {
-      const resFallback = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
-      const data = await resFallback.json();
-      return data.rate || 0;
-    } catch (fallbackError) { return 0; }
+      const res = await fetch(url, { headers: { 'User-Agent': USER_AGENT }, signal: controller.signal });
+      return await res.text();
+    } finally { clearTimeout(temporizador); }
+  } catch (error) {
+    return await descargarHTMLConHttps(url);
   }
 };
+
+const extraerTasaDelHTML = (html: string): number => {
+  const match = html.match(/<div[^>]*id="dolar"[^>]*>[\s\S]*?<strong[^>]*>\s*([\d.,]+)\s*<\/strong>/);
+  if (match && match[1]) {
+    return parseFloat(match[1].replace(/\./g, '').replace(',', '.'));
+  }
+  return 0;
+};
+
+// Acepta la tasa solo si es un número válido y no se aleja demasiado de la última conocida
+const tasaPlausible = (tasa: number, referencia: number | null): boolean => {
+  if (!isFinite(tasa) || tasa <= 0) return false;
+  if (referencia && referencia > 0) return tasa >= referencia * 0.5 && tasa <= referencia * 2;
+  return true;
+};
+
+const calcularTasa = async (): Promise<ResultadoTasa> => {
+  const hoy = hoyISO();
+  const historial = await leerHistorialTasas();
+  const ultima = tasaVigenteEn(historial, '9999-12-31');
+  const referencia = ultima ? ultima.tasa : null;
+
+  // 1) Tasa manual guardada hoy
+  const manual = await obtenerTasaManualGuardada();
+  if (manual && manual.iso === hoy) {
+    const resultado = { tasa: manual.tasa, fuente: 'manual', fechaTasa: hoy };
+    cacheTasa = { resultado, vence: Date.now() + 10 * 60 * 1000 };
+    return resultado;
+  }
+
+  // 2) Página del BCV
+  try {
+    const html = await descargarHTMLBCV();
+    const tasa = extraerTasaDelHTML(html);
+    if (tasaPlausible(tasa, referencia)) {
+      // Se registra solo cuando cambia respecto a la última guardada
+      if (!ultima || ultima.tasa.toFixed(4) !== tasa.toFixed(4)) {
+        await registrarTasaAutomatica(tasa, 'Auto BCV');
+      }
+      const resultado = { tasa, fuente: 'BCV', fechaTasa: hoy };
+      cacheTasa = { resultado, vence: Date.now() + 10 * 60 * 1000 };
+      return resultado;
+    }
+  } catch (error) { console.error('No se pudo leer la tasa del BCV:', error); }
+
+  // 3) Servicio de respaldo
+  try {
+    const resFallback = await fetch('https://allratestoday.com/api/open/central-bank/bcv?source=USD&target=VES');
+    const data: any = await resFallback.json();
+    const tasa = Number(data.rate);
+    if (tasaPlausible(tasa, referencia)) {
+      if (!ultima || ultima.tasa.toFixed(4) !== tasa.toFixed(4)) {
+        await registrarTasaAutomatica(tasa, 'Auto respaldo');
+      }
+      const resultado = { tasa, fuente: 'respaldo', fechaTasa: hoy };
+      cacheTasa = { resultado, vence: Date.now() + 10 * 60 * 1000 };
+      return resultado;
+    }
+  } catch (error) { console.error('No se pudo usar el servicio de respaldo:', error); }
+
+  // 4) Última tasa guardada (fines de semana, feriados o si todo lo anterior falla)
+  if (ultima) {
+    const resultado = { tasa: ultima.tasa, fuente: 'última guardada', fechaTasa: ultima.iso };
+    cacheTasa = { resultado, vence: Date.now() + 60 * 1000 };
+    return resultado;
+  }
+
+  return { tasa: 0, fuente: 'sin datos', fechaTasa: hoy };
+};
+
+const resolverTasa = async (): Promise<ResultadoTasa> => {
+  if (cacheTasa && cacheTasa.vence > Date.now()) return cacheTasa.resultado;
+  if (!calculoEnCurso) {
+    calculoEnCurso = calcularTasa().finally(() => { calculoEnCurso = null; });
+  }
+  return calculoEnCurso;
+};
+
+const obtenerTasaBCV = async (): Promise<number> => (await resolverTasa()).tasa;
+
+/* =====================================================================
+   HISTORIAL
+   ===================================================================== */
 
 const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, pagoResumen: string, tasa: number, totalUSD: number, totalBS: number) => {
   try {
@@ -50,6 +214,10 @@ const guardarHistorial = async (tipo: string, codigo: string, cantidad: string, 
     });
   } catch (error: any) { console.error('Error historial:', error); }
 };
+
+/* =====================================================================
+   RUTAS
+   ===================================================================== */
 
 router.get('/', async (req, res) => {
   try {
@@ -114,6 +282,10 @@ router.post('/vender', async (req, res) => {
     }
 
     const tasaBCV = await obtenerTasaBCV();
+    if (!(tasaBCV > 0)) {
+      return res.status(503).json({ error: 'No hay tasa BCV disponible. Ingrésala manualmente con el lápiz y vuelve a intentar.' });
+    }
+
     let granTotalUSD = 0;
     let granTotalBS = 0;
     const pagoResumen = pagos.map((p: any) => `${p.metodo}: $${parseFloat(p.monto).toFixed(2).replace('.', ',')}`).join(' | ');
@@ -146,7 +318,10 @@ router.post('/vender', async (req, res) => {
   }
 });
 
-router.get('/tasa', async (req, res) => { res.json({ tasa: await obtenerTasaBCV() }); });
+router.get('/tasa', async (req, res) => {
+  const r = await resolverTasa();
+  res.json({ tasa: r.tasa, fuente: r.fuente, fechaTasa: r.fechaTasa });
+});
 
 router.post('/tasa-manual', async (req, res) => {
   const { nuevaTasa } = req.body;
@@ -170,6 +345,9 @@ router.post('/tasa-manual', async (req, res) => {
 
       const sheetTasas = await getSheet('Tasas');
       await sheetTasas.addRow({ Fecha: fecha, Tasa: tasaFormateada, Usuario: 'Admin' });
+
+      // Se borra la memoria para que la nueva tasa se use de inmediato
+      cacheTasa = null;
       
       res.json({ message: 'Tasa guardada', tasa: tasaNumerica });
     } catch (error) {
@@ -184,10 +362,11 @@ router.get('/reporte', async (req, res) => {
     const sheetHistorial = await getSheet('Historial');
     const rows = await sheetHistorial.getRows();
     
-    const fechaBuscar = fecha ? fecha.split('-').reverse().join('/') : new Date().toLocaleDateString("es-VE", { timeZone: "America/Caracas" });
+    // Fecha a consultar en formato AAAA-MM-DD
+    const fechaISO = fecha && /^\d{4}-\d{2}-\d{2}$/.test(fecha) ? fecha : hoyISO();
     
     const ventasFiltradas = rows.filter((row: any) => {
-      return (row.get('Tipo') || '') === 'Venta' && (row.get('Fecha') || '').startsWith(fechaBuscar);
+      return (row.get('Tipo') || '') === 'Venta' && fechaAISO((row.get('Fecha') || '').toString()) === fechaISO;
     }).map((row: any) => ({
       Fecha: row.get('Fecha'),
       Codigo: row.get('Codigo'),
@@ -197,20 +376,13 @@ router.get('/reporte', async (req, res) => {
       TotalBS: parseFloat((row.get('TotalBS') || '0').toString().replace(',', '.'))
     }));
 
-    // --- NUEVO: Buscar la tasa utilizada en la hoja de Tasas ---
+    // Tasa vigente ese día: la registrada ese día o, si no hay (fin de semana o feriado),
+    // la más reciente anterior
     let tasaDelDia = 0;
     try {
-      const sheetTasas = await getSheet('Tasas');
-      const filasTasas = await sheetTasas.getRows();
-      // Buscamos si hay algún registro de tasa en esa fecha
-      const tasasDelDia = filasTasas.filter((r: any) => (r.get('Fecha') || '').startsWith(fechaBuscar));
-      if (tasasDelDia.length > 0) {
-        // Tomamos la última tasa registrada ese día
-        tasaDelDia = parseFloat(tasasDelDia[tasasDelDia.length - 1].get('Tasa').toString().replace(',', '.'));
-      } else {
-        // Si no hay, usamos la tasa actual
-        tasaDelDia = await obtenerTasaBCV();
-      }
+      const historialTasas = await leerHistorialTasas();
+      const registro = tasaVigenteEn(historialTasas, fechaISO);
+      tasaDelDia = registro ? registro.tasa : await obtenerTasaBCV();
     } catch (e) {
       tasaDelDia = await obtenerTasaBCV();
     }
