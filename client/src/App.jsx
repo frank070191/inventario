@@ -215,6 +215,9 @@ function App() {
 
   const productosFiltrados = productos.filter(p => p.Nombre && p.Nombre.toLowerCase().includes(busqueda.toLowerCase()));
 
+  // Producto que se está escribiendo en la pantalla de venta (para mostrar nombre y precio de referencia)
+  const prodVentaActual = productoActual.codigo ? productos.find(p => p.Codigo === productoActual.codigo) : null;
+
   return (
     <div className="app-container">
       
@@ -315,6 +318,21 @@ function App() {
                 <input placeholder="Precio $" type="number" value={productoActual.precio} onChange={e => setProductoActual({...productoActual, precio: e.target.value})} style={{flex: 1, padding: '8px', minWidth: '80px', border: productoActual.precio ? '2px solid #28a745' : '2px solid #dc3545'}} />
                 <button onClick={agregarAlCarrito} style={{ padding: '8px 15px', backgroundColor: '#007bff', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold' }}>+</button>
               </div>
+
+              {/* INFO DEL PRODUCTO (nombre, precio de referencia y stock) */}
+              {productoActual.codigo && (
+                <p style={{ margin: '8px 0 0 0', fontSize: '13px', color: '#666' }}>
+                  {prodVentaActual ? (
+                    <>
+                      <strong style={{ color: '#2c3e50' }}>{prodVentaActual.Nombre}</strong>
+                      {prodVentaActual.Venta ? ` (Precio ref: $${formatoMoneda(prodVentaActual.Venta)})` : ''}
+                      {` — Stock: ${prodVentaActual.Existencia}`}
+                    </>
+                  ) : (
+                    <span style={{ color: '#dc3545' }}>Código no encontrado</span>
+                  )}
+                </p>
+              )}
             </div>
 
             <div className="tabla-contenedor" style={{marginBottom: '20px'}}>
