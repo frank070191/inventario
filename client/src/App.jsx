@@ -253,6 +253,12 @@ function App() {
       {/* BARRA SUPERIOR (solo teléfono) */}
       <div className="topbar">
         <button className="hamburger" onClick={() => setMenuAbierto(true)} aria-label="Abrir menú">☰</button>
+        <img
+          src="/logo.png"
+          alt="Logo"
+          className="topbar-logo"
+          onError={(e) => { e.currentTarget.style.display = 'none'; }}
+        />
         <span className="topbar-titulo">Sistema de Inventario</span>
       </div>
 
@@ -285,6 +291,16 @@ function App() {
 
       {/* CONTENIDO PRINCIPAL */}
       <div className="main-content">
+        <div className="encabezado">
+          <div className="encabezado-logo">
+            <img
+              src="/logo.png"
+              alt="Logo"
+              className="logo"
+              onError={(e) => { e.currentTarget.style.display = 'none'; }}
+            />
+          </div>
+          <div className="encabezado-centro">
         <h1>Sistema de Inventario</h1>
         
         <div style={{ textAlign: 'center', marginBottom: '20px', fontWeight: 'bold', color: '#2c3e50', fontSize: '14px' }}>
@@ -298,6 +314,10 @@ function App() {
               <button onClick={() => setEditandoTasa(false)} style={{ padding: '5px 10px', backgroundColor: '#dc3545', color: 'white', border: 'none', borderRadius: '5px' }}>X</button>
             </div>
           )}
+        </div>
+
+          </div>
+          <div className="encabezado-espacio" />
         </div>
 
         {mensaje && <div className="mensaje-alerta">{mensaje}</div>}

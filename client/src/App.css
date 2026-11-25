@@ -136,6 +136,25 @@ html, body {
   word-break: break-word;
 }
 
+/* ===== Encabezado con logo ===== */
+.encabezado {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;   /* logo | título y tasa | espacio simétrico */
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+.encabezado-logo { justify-self: start; }
+.encabezado-centro { text-align: center; }
+.encabezado-centro h1 { margin-bottom: 10px; }
+.logo {
+  display: block;
+  max-height: 80px;
+  max-width: 100%;
+  object-fit: contain;
+}
+.topbar-logo { height: 36px; width: auto; border-radius: 4px; }
+
 /* ===== Tablas ===== */
 .tabla-contenedor {
   background-color: white;
@@ -290,4 +309,15 @@ input, select { font-size: 16px; }
   .mensaje-alerta { padding: 12px; font-size: 14px; }
 
   .btn-accion { width: 100%; }
+}
+
+/* ===== Encabezado en teléfono: el logo pasa a la barra superior ===== */
+@media (max-width: 767px) {
+  .encabezado { grid-template-columns: 1fr; }
+  .encabezado-logo, .encabezado-espacio { display: none; }
+}
+
+/* ===== Encabezado en tablet: logo un poco más pequeño ===== */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .logo { max-height: 60px; }
 }
