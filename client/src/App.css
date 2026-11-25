@@ -1,4 +1,3 @@
-/* Estilos generales de la página */
 body {
   background-color: #f4f7f6;
   color: #333;
@@ -6,67 +5,117 @@ body {
   padding: 0;
 }
 
-.container {
+.app-container {
+  display: flex;
+  min-height: 100vh;
   font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  max-width: 900px;
-  margin: 0 auto;
+}
+
+/* --- ESTILOS DEL MENÚ LATERAL --- */
+.sidebar {
+  width: 250px;
+  background-color: #2c3e50;
+  color: white;
+  transition: width 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  padding-top: 20px;
+}
+
+.sidebar.cerrado {
+  width: 70px;
+}
+
+.sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 15px;
+  margin-bottom: 20px;
+}
+
+.sidebar-header h2 {
+  font-size: 18px;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.toggle-btn {
+  background: none;
+  border: none;
+  color: white;
+  cursor: pointer;
+  font-size: 20px;
+}
+
+.menu-items {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 0 10px;
+}
+
+.menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  padding: 15px 20px;
+  background-color: transparent;
+  color: #bdc3c7;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 16px;
+  font-weight: bold;
+  text-align: left;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.menu-btn:hover {
+  background-color: #34495e;
+  color: white;
+}
+
+.menu-btn.activo {
+  background-color: #007bff;
+  color: white;
+  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
+}
+
+.menu-btn.cerrado span {
+  display: none;
+}
+
+/* --- CONTENIDO PRINCIPAL --- */
+.main-content {
+  flex: 1;
   padding: 20px;
+  overflow-y: auto;
 }
 
 h1 {
   text-align: center;
   color: #2c3e50;
-  margin-bottom: 30px;
   text-transform: uppercase;
-  letter-spacing: 1px;
-}
-
-/* Contenedor de los botones del menú */
-.menu-botones {
-  display: flex;
-  gap: 15px;
   margin-bottom: 30px;
-  justify-content: center;
-  flex-wrap: wrap;
 }
 
-/* Magia para los botones 3D */
-.btn-3d {
-  padding: 12px 24px;
-  font-size: 16px;
-  font-weight: bold;
-  color: white;
-  border: none;
-  border-radius: 8px;
-  cursor: pointer;
-  transition: all 0.1s ease;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-
-.btn-3d:active {
-  transform: translateY(4px); /* Efecto de presionar el botón */
-  box-shadow: none !important;
-}
-
-.btn-blue { background-color: #007bff; box-shadow: 0 6px 0 #0056b3; }
-.btn-green { background-color: #28a745; box-shadow: 0 6px 0 #1e7e34; }
-.btn-red { background-color: #dc3545; box-shadow: 0 6px 0 #a71d2a; }
-.btn-purple { background-color: #6f42c1; box-shadow: 0 6px 0 #4e2a8e; }
-
-/* Estilos de la tabla */
+/* Tablas y Formularios */
 .tabla-contenedor {
   background: white;
   border-radius: 10px;
   box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-  overflow-x: auto; /* Para que la tabla se pueda deslizar en el celular */
+  overflow-x: auto;
   margin-top: 20px;
 }
 
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 500px; /* Asegura un ancho mínimo para que no se aplaste en móvil */
+  min-width: 500px;
 }
 
 thead {
@@ -79,21 +128,10 @@ th, td {
   border-bottom: 1px solid #eee;
 }
 
-/* Alinear precios a la derecha */
-.texto-derecha {
-  text-align: right;
-}
+.texto-derecha { text-align: right; }
+.texto-centro { text-align: center; }
+tbody tr:hover { background-color: #f1f1f1; }
 
-/* Centrar las existencias y códigos */
-.texto-centro {
-  text-align: center;
-}
-
-tbody tr:hover {
-  background-color: #f1f1f1; /* Efecto al pasar el ratón */
-}
-
-/* Estilos de los formularios */
 .formulario {
   background: white;
   padding: 30px;
@@ -106,30 +144,12 @@ tbody tr:hover {
   gap: 15px;
 }
 
-.formulario input, .formulario select {
+input {
   padding: 12px;
   border: 1px solid #ccc;
   border-radius: 6px;
   font-size: 15px;
   outline: none;
-  transition: border 0.3s;
-  width: 100%;
-  box-sizing: border-box;
-}
-
-.formulario input:focus, .formulario select:focus {
-  border-color: #007bff;
-}
-
-.caja-info {
-  background-color: #e9ecef;
-  padding: 15px;
-  border-radius: 8px;
-  border-left: 5px solid #007bff;
-}
-
-.caja-info p {
-  margin: 5px 0;
 }
 
 .mensaje-alerta {
@@ -142,34 +162,50 @@ tbody tr:hover {
   margin-bottom: 20px;
 }
 
-/* --- DISEÑO RESPONSIVE PARA MÓVILES --- */
-@media (max-width: 600px) {
-  .container {
+/* Botones normales */
+.btn-accion {
+  padding: 10px 15px;
+  color: white;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+  transition: 0.2s;
+}
+.btn-accion:hover { opacity: 0.8; }
+
+/* --- DISEÑO RESPONSIVE --- */
+@media (max-width: 768px) {
+  .app-container {
+    flex-direction: column;
+  }
+  .sidebar {
+    width: 100%;
+    flex-direction: row;
+    padding: 10px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .sidebar.cerrado {
+    width: 100%;
     padding: 10px;
   }
-  
-  h1 {
-    font-size: 22px;
-    margin-bottom: 15px;
+  .sidebar-header {
+    margin-bottom: 0;
   }
-
-  .menu-botones {
-    gap: 8px;
+  .menu-items {
+    flex-direction: row;
+    overflow-x: auto;
+    padding: 0;
   }
-
-  .btn-3d {
-    padding: 10px 15px;
+  .menu-btn {
+    padding: 10px;
     font-size: 14px;
-    flex: 1; 
-    min-width: 45%; /* Dos botones por fila */
   }
-
-  .formulario {
-    padding: 15px;
+  .menu-btn span {
+    display: none; /* En móvil solo mostramos iconos */
   }
-
-  th, td {
-    padding: 8px 5px;
-    font-size: 12px;
+  .main-content {
+    padding: 10px;
   }
 }

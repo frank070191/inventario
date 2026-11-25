@@ -134,7 +134,6 @@ router.post('/vender', async (req, res) => {
       producto.set('EXISTENCIA', (existenciaActual - cantidadVender).toString());
       await producto.save();
 
-      // Solo guardamos el pago en la PRIMERA fila, el resto es N/A
       const pagoParaEstaFila = i === 0 ? pagoResumen : 'N/A';
 
       await guardarHistorial('Venta', item.codigo, item.cantidad, pagoParaEstaFila, tasaBCV, totalUSD, totalBS);
@@ -187,7 +186,6 @@ router.get('/reporte', async (req, res) => {
     
     const fechaBuscar = fecha ? fecha.split('-').reverse().join('/') : new Date().toLocaleDateString("es-VE", { timeZone: "America/Caracas" });
     
-    // Filtramos ventas del día
     const ventasFiltradas = rows.filter((row: any) => {
       return (row.get('Tipo') || '') === 'Venta' && (row.get('Fecha') || '').startsWith(fechaBuscar);
     }).map((row: any) => ({
@@ -199,14 +197,30 @@ router.get('/reporte', async (req, res) => {
       TotalBS: parseFloat((row.get('TotalBS') || '0').toString().replace(',', '.'))
     }));
 
+    // --- NUEVO: Buscar la tasa utilizada en la hoja de Tasas ---
+    let tasaDelDia = 0;
+    try {
+      const sheetTasas = await getSheet('Tasas');
+      const filasTasas = await sheetTasas.getRows();
+      // Buscamos si hay algún registro de tasa en esa fecha
+      const tasasDelDia = filasTasas.filter((r: any) => (r.get('Fecha') || '').startsWith(fechaBuscar));
+      if (tasasDelDia.length > 0) {
+        // Tomamos la última tasa registrada ese día
+        tasaDelDia = parseFloat(tasasDelDia[tasasDelDia.length - 1].get('Tasa').toString().replace(',', '.'));
+      } else {
+        // Si no hay, usamos la tasa actual
+        tasaDelDia = await obtenerTasaBCV();
+      }
+    } catch (e) {
+      tasaDelDia = await obtenerTasaBCV();
+    }
+
     const granTotalUSD = ventasFiltradas.reduce((acc: any, v: any) => acc + v.TotalUSD, 0);
     const granTotalBS = ventasFiltradas.reduce((acc: any, v: any) => acc + v.TotalBS, 0);
 
     const metodosMap: { [key: string]: { transacciones: number, usd: number, bs: number } } = {};
-    const tasaHoy = await obtenerTasaBCV();
 
     ventasFiltradas.forEach((venta: any) => {
-      // 🚨 FILTRO CLAVE: Si el pago es 'N/A', lo ignoramos para no duplicar
       if (venta.Pago && venta.Pago !== 'N/A' && venta.Pago.trim() !== '') {
         const pagosArray = venta.Pago.split(' | ');
         pagosArray.forEach((pagoStr: string) => {
@@ -217,13 +231,13 @@ router.get('/reporte', async (req, res) => {
             
             metodosMap[metodo].transacciones += 1;
             metodosMap[metodo].usd += montoUSD;
-            metodosMap[metodo].bs += (montoUSD * tasaHoy);
+            metodosMap[metodo].bs += (montoUSD * tasaDelDia);
           }
         });
       }
     });
 
-    res.json({ ventas: ventasFiltradas, granTotalUSD, granTotalBS, desglosePagos: metodosMap });
+    res.json({ ventas: ventasFiltradas, granTotalUSD, granTotalBS, desglosePagos: metodosMap, tasaDelDia });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Error al generar el reporte' });
