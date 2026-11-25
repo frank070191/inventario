@@ -1,155 +1,128 @@
-body {
-  background-color: #f4f7f6;
-  color: #333;
+/* ===== Base ===== */
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
   margin: 0;
   padding: 0;
+  min-width: 0;
+  display: block;
+  background-color: #f4f6f8;
+  font-family: Arial, sans-serif;
+  overflow-x: hidden;
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  max-width: none;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  text-align: left;
 }
 
 .app-container {
   display: flex;
   min-height: 100vh;
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  min-height: 100dvh;
+  width: 100%;
 }
 
-/* --- ESTILOS DEL MENÚ LATERAL --- */
+/* ===== Barra lateral (escritorio y tablet) ===== */
 .sidebar {
-  width: 250px;
+  width: 220px;
+  flex-shrink: 0;
   background-color: #2c3e50;
   color: white;
-  transition: width 0.3s ease;
   display: flex;
   flex-direction: column;
-  padding-top: 20px;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  transition: width 0.25s ease;
+  z-index: 1000;
 }
 
-.sidebar.cerrado {
-  width: 70px;
-}
+.sidebar.cerrado { width: 64px; }
 
 .sidebar-header {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  padding: 0 15px;
-  margin-bottom: 20px;
+  justify-content: space-between;
+  padding: 14px 12px;
+  min-height: 64px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.15);
 }
 
-.sidebar-header h2 {
-  font-size: 18px;
-  margin: 0;
-  white-space: nowrap;
-  overflow: hidden;
-}
+.sidebar.cerrado .sidebar-header { justify-content: center; padding: 14px 0; }
+
+.sidebar-header h2 { margin: 0; font-size: 20px; white-space: nowrap; }
 
 .toggle-btn {
-  background: none;
-  border: none;
+  background: rgba(255, 255, 255, 0.12);
   color: white;
+  border: none;
+  border-radius: 8px;
+  width: 40px;
+  height: 40px;
+  font-size: 16px;
   cursor: pointer;
-  font-size: 20px;
+  flex-shrink: 0;
 }
+.toggle-btn:hover { background: rgba(255, 255, 255, 0.25); }
 
 .menu-items {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 0 10px;
+  gap: 6px;
+  padding: 12px 8px;
 }
 
 .menu-btn {
   display: flex;
   align-items: center;
-  gap: 15px;
-  padding: 15px 20px;
-  background-color: transparent;
-  color: #bdc3c7;
+  gap: 12px;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 14px;
+  background: transparent;
+  color: white;
   border: none;
   border-radius: 8px;
-  cursor: pointer;
   font-size: 16px;
-  font-weight: bold;
   text-align: left;
-  transition: all 0.2s ease;
+  cursor: pointer;
   white-space: nowrap;
   overflow: hidden;
 }
+.menu-btn:hover { background: rgba(255, 255, 255, 0.12); }
+.menu-btn.activo { background: #007bff; font-weight: bold; }
 
-.menu-btn:hover {
-  background-color: #34495e;
-  color: white;
-}
+/* Menú cerrado en escritorio/tablet: solo iconos */
+.sidebar.cerrado .menu-btn { justify-content: center; padding: 10px 0; }
+.sidebar.cerrado .menu-btn span:last-child { display: none; }
 
-.menu-btn.activo {
-  background-color: #007bff;
-  color: white;
-  box-shadow: 0 4px 6px rgba(0,0,0,0.2);
-}
+/* Elementos que solo existen en teléfono */
+.topbar { display: none; }
+.sidebar-backdrop { display: none; }
 
-.menu-btn.cerrado span {
-  display: none;
-}
-
-/* --- CONTENIDO PRINCIPAL --- */
+/* ===== Contenido principal ===== */
 .main-content {
   flex: 1;
+  min-width: 0;            /* permite que las tablas hagan scroll en vez de ensanchar la página */
   padding: 20px;
-  overflow-y: auto;
+  max-width: 1000px;
+  margin: 0 auto;
 }
 
-h1 {
+.main-content h1 {
   text-align: center;
   color: #2c3e50;
   text-transform: uppercase;
-  margin-bottom: 30px;
-}
-
-/* Tablas y Formularios */
-.tabla-contenedor {
-  background: white;
-  border-radius: 10px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-  overflow-x: auto;
-  margin-top: 20px;
-}
-
-table {
-  width: 100%;
-  border-collapse: collapse;
-  min-width: 500px;
-}
-
-thead {
-  background-color: #2c3e50;
-  color: white;
-}
-
-th, td {
-  padding: 15px;
-  border-bottom: 1px solid #eee;
-}
-
-.texto-derecha { text-align: right; }
-.texto-centro { text-align: center; }
-tbody tr:hover { background-color: #f1f1f1; }
-
-.formulario {
-  background: white;
-  padding: 30px;
-  border-radius: 10px;
-  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
-  max-width: 500px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 15px;
-}
-
-input {
-  padding: 12px;
-  border: 1px solid #ccc;
-  border-radius: 6px;
-  font-size: 15px;
-  outline: none;
+  font-size: 28px;
+  margin: 0 0 16px 0;
 }
 
 .mensaje-alerta {
@@ -160,52 +133,161 @@ input {
   text-align: center;
   font-weight: bold;
   margin-bottom: 20px;
+  word-break: break-word;
 }
 
-/* Botones normales */
+/* ===== Tablas ===== */
+.tabla-contenedor {
+  background-color: white;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  margin-bottom: 20px;
+}
+
+.tabla-contenedor table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 480px;
+}
+
+.tabla-contenedor thead { background-color: #2c3e50; color: white; }
+.tabla-contenedor th { padding: 10px; text-align: left; font-size: 14px; }
+.tabla-contenedor td { padding: 10px; border-bottom: 1px solid #eee; }
+
+.texto-centro { text-align: center; }
+.texto-derecha { text-align: right; }
+
+/* ===== Formulario de carga ===== */
+.formulario {
+  background-color: white;
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  max-width: 500px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.formulario input {
+  padding: 12px;
+  border-radius: 5px;
+  border: 1px solid #ccc;
+  width: 100%;
+}
+
+/* ===== Botones de acción ===== */
 .btn-accion {
-  padding: 10px 15px;
+  padding: 12px 24px;
+  font-size: 16px;
+  font-weight: bold;
   color: white;
   border: none;
-  border-radius: 5px;
+  border-radius: 8px;
   cursor: pointer;
-  font-weight: bold;
-  transition: 0.2s;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  min-height: 48px;
 }
-.btn-accion:hover { opacity: 0.8; }
+.btn-accion:active { transform: translateY(2px); }
 
-/* --- DISEÑO RESPONSIVE --- */
-@media (max-width: 768px) {
-  .app-container {
-    flex-direction: column;
-  }
-  .sidebar {
-    width: 100%;
-    flex-direction: row;
-    padding: 10px;
+/* ===== Campos: tamaño táctil y sin zoom automático en iPhone ===== */
+input, select, button { font-family: inherit; }
+input, select { font-size: 16px; }
+
+/* ===== Tablet (768px - 1023px): barra de iconos que se expande ===== */
+@media (min-width: 768px) and (max-width: 1023px) {
+  .main-content { padding: 16px; }
+  .main-content h1 { font-size: 24px; }
+}
+
+/* ===== Teléfono (menos de 768px): menú como cajón deslizable ===== */
+@media (max-width: 767px) {
+  .topbar {
+    display: flex;
     align-items: center;
-    justify-content: space-between;
+    gap: 12px;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    padding: 0 12px;
+    background-color: #2c3e50;
+    color: white;
+    z-index: 900;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
   }
+
+  .hamburger {
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    width: 44px;
+    height: 44px;
+    font-size: 24px;
+    cursor: pointer;
+  }
+
+  .topbar-titulo {
+    font-size: 17px;
+    font-weight: bold;
+    text-transform: uppercase;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    height: auto;
+    width: 260px;
+    max-width: 80vw;
+    transform: translateX(0);
+    transition: transform 0.25s ease;
+    box-shadow: 4px 0 20px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Cerrado = fuera de la pantalla (no barra de iconos) */
   .sidebar.cerrado {
-    width: 100%;
-    padding: 10px;
+    width: 260px;
+    transform: translateX(-105%);
+    box-shadow: none;
   }
-  .sidebar-header {
-    margin-bottom: 0;
+  .sidebar.cerrado .sidebar-header { justify-content: space-between; padding: 14px 12px; }
+  .sidebar.cerrado .menu-btn { justify-content: flex-start; padding: 10px 14px; }
+  .sidebar.cerrado .menu-btn span:last-child { display: inline; }
+
+  .sidebar-backdrop {
+    display: block;
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 950;
   }
-  .menu-items {
-    flex-direction: row;
-    overflow-x: auto;
-    padding: 0;
-  }
-  .menu-btn {
-    padding: 10px;
-    font-size: 14px;
-  }
-  .menu-btn span {
-    display: none; /* En móvil solo mostramos iconos */
-  }
+  /* el cajón queda por encima del fondo oscuro */
+  .sidebar { z-index: 1000; }
+
   .main-content {
-    padding: 10px;
+    padding: 70px 10px 20px 10px;   /* deja espacio para la barra superior */
+    max-width: 100%;
   }
+
+  .main-content h1 { display: none; } /* el título ya está en la barra superior */
+
+  .tabla-contenedor table { min-width: 420px; }
+  .tabla-contenedor th, .tabla-contenedor td { padding: 8px; }
+
+  .formulario { padding: 14px; }
+
+  .mensaje-alerta { padding: 12px; font-size: 14px; }
+
+  .btn-accion { width: 100%; }
 }

@@ -1,10 +1,18 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import './App.css';
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const API_URL = 'https://inventario-xp8l.onrender.com/api/inventario'; 
 const METODOS_PAGO = ["T. Débito Bancamiga", "T. Crédito Banca", "PM Empresa", "PM Persona", "Biopago", "Transf Vzla", "Transf. Bancamiga", "T. Débito BNC", "T. Crédito BNC", "Cashea"];
+
+// Tamaños de pantalla: < 768 = teléfono, 768-1023 = tablet, >= 1024 = escritorio
+const categoriaPantalla = () => {
+  const w = window.innerWidth;
+  if (w < 768) return 'movil';
+  if (w < 1024) return 'tablet';
+  return 'escritorio';
+};
 
 const formatoMoneda = (numero) => {
   if (numero === null || numero === undefined || isNaN(parseFloat(numero))) return '0,00';
@@ -13,7 +21,10 @@ const formatoMoneda = (numero) => {
 
 function App() {
   const [vista, setVista] = useState('consultar');
-  const [menuAbierto, setMenuAbierto] = useState(true);
+  // En escritorio el menú empieza abierto; en tablet (barra de iconos) y teléfono (cajón) empieza cerrado
+  const [menuAbierto, setMenuAbierto] = useState(() => categoriaPantalla() === 'escritorio');
+  const [esMovil, setEsMovil] = useState(() => categoriaPantalla() === 'movil');
+  const categoriaRef = useRef(categoriaPantalla());
   
   const [productos, setProductos] = useState([]);
   const [busqueda, setBusqueda] = useState('');
@@ -72,6 +83,24 @@ function App() {
   };
 
   useEffect(() => { consultar(); obtenerTasa(); }, []);
+
+  // Ajusta el menú solo cuando cambia el tipo de pantalla (girar el equipo, redimensionar)
+  useEffect(() => {
+    const alRedimensionar = () => {
+      const nueva = categoriaPantalla();
+      if (nueva === categoriaRef.current) return;
+      categoriaRef.current = nueva;
+      setEsMovil(nueva === 'movil');
+      setMenuAbierto(nueva === 'escritorio');
+    };
+    window.addEventListener('resize', alRedimensionar);
+    return () => window.removeEventListener('resize', alRedimensionar);
+  }, []);
+
+  const cambiarVista = (v) => {
+    setVista(v);
+    if (esMovil) setMenuAbierto(false);
+  };
   
   useEffect(() => { 
     if (vista === 'reporte') generarReporte(fechaReporte); 
@@ -221,6 +250,15 @@ function App() {
   return (
     <div className="app-container">
       
+      {/* BARRA SUPERIOR (solo teléfono) */}
+      <div className="topbar">
+        <button className="hamburger" onClick={() => setMenuAbierto(true)} aria-label="Abrir menú">☰</button>
+        <span className="topbar-titulo">Sistema de Inventario</span>
+      </div>
+
+      {/* FONDO OSCURO DEL MENÚ (solo teléfono) */}
+      {esMovil && menuAbierto && <div className="sidebar-backdrop" onClick={() => setMenuAbierto(false)} />}
+
       {/* BARRA LATERAL */}
       <div className={`sidebar ${menuAbierto ? '' : 'cerrado'}`}>
         <div className="sidebar-header">
@@ -230,16 +268,16 @@ function App() {
           </button>
         </div>
         <div className="menu-items">
-          <button onClick={() => setVista('consultar')} className={`menu-btn ${vista === 'consultar' ? 'activo' : ''}`}>
+          <button onClick={() => cambiarVista('consultar')} className={`menu-btn ${vista === 'consultar' ? 'activo' : ''}`}>
             <span style={{ fontSize: '20px' }}>🔍</span> <span>Consultar</span>
           </button>
-          <button onClick={() => setVista('cargar')} className={`menu-btn ${vista === 'cargar' ? 'activo' : ''}`}>
+          <button onClick={() => cambiarVista('cargar')} className={`menu-btn ${vista === 'cargar' ? 'activo' : ''}`}>
             <span style={{ fontSize: '20px' }}>📦</span> <span>Cargar</span>
           </button>
-          <button onClick={() => setVista('vender')} className={`menu-btn ${vista === 'vender' ? 'activo' : ''}`}>
+          <button onClick={() => cambiarVista('vender')} className={`menu-btn ${vista === 'vender' ? 'activo' : ''}`}>
             <span style={{ fontSize: '20px' }}>🛒</span> <span>Vender</span>
           </button>
-          <button onClick={() => setVista('reporte')} className={`menu-btn ${vista === 'reporte' ? 'activo' : ''}`}>
+          <button onClick={() => cambiarVista('reporte')} className={`menu-btn ${vista === 'reporte' ? 'activo' : ''}`}>
             <span style={{ fontSize: '20px' }}>📊</span> <span>Reportes</span>
           </button>
         </div>
